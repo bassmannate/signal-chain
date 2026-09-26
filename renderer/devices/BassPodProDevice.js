@@ -9,13 +9,17 @@ import {
     SYSEX_END,
     SYSEX_START,
     buildAllProgramsDumpRequest,
+    buildEditBufferDump,
     buildEditBufferDumpRequest,
+    buildProgramDump,
     buildProgramDumpRequest,
     isDecodableDump,
     parseDumpMessage,
     readPatchName,
     readProgram,
     splitPrograms,
+    updateProgramBytesFromCc,
+    writePatchName,
 } from "./bassPodProSysex.js";
 
 // ---------------------------------------------------------------------------
@@ -106,6 +110,10 @@ export class BassPodProDevice {
         // dump and is what the patch list shows.
         this._sysexLayout = profileData?.sysexLayout ?? null;
         this._programs = [];
+        // Raw 80 bytes per stored program, filled from the all-programs dump.
+        // This is what "Backup All" writes to disk, so the bytes are kept
+        // rather than thrown away after the names are read out of them.
+        this._programBlobs = [];
         this._programListListeners = [];
         this._programLoadedListeners = [];
         this._pendingDumps = [];
@@ -113,6 +121,9 @@ export class BassPodProDevice {
         // its own budget (see _timeoutFor).
         this._dumpTimeoutMs = options.dumpTimeoutMs;
         this._sysexBuffer = [];
+        this._currentProgramBytes = null;
+        this._currentProgramName = "";
+        this._activeProgramNumber = null;
         // Which program the POD is on as far as the app knows, so an edit-buffer
         // dump (which carries no program number) can still be labelled, plus the
         // last one the app sent, for telling the pedal's own moves apart from
@@ -189,6 +200,9 @@ export class BassPodProDevice {
         const max = control ? control.max : 127;
         const clamped = Math.max(min, Math.min(max, Math.round(value)));
         this._recentlySent.set(ccNumber, this._now());
+        if (this._currentProgramBytes) {
+            updateProgramBytesFromCc(this._currentProgramBytes, this._sysexLayout, ccNumber, clamped);
+        }
         this._midi.sendCC(this._midiDevice.outputID, this._channel, ccNumber, clamped);
     }
 
@@ -228,6 +242,15 @@ export class BassPodProDevice {
     /** Cached program list; empty until an all-programs dump has been read. */
     get programs() {
         return this._programs;
+    }
+
+    /**
+     * Raw 80 bytes for each stored program, filled whenever an all-programs
+     * dump has been read (and kept in step by uploadProgramToSlot). Sparse
+     * until then: an entry can be undefined if that program was never read.
+     */
+    get storedProgramBytes() {
+        return this._programBlobs;
     }
 
     /** Program number (0 = 1A) -> program change number (1 = 1A). */
@@ -281,6 +304,111 @@ export class BassPodProDevice {
         if (!this._isOpen) return undefined;
         this.sendProgramChange(this.programChangeFor(programNumber));
         return await this.requestProgramDump(programNumber);
+    }
+
+    /** The 80-byte program bytes currently in memory/panel, or null. */
+    get currentProgramBytes() {
+        return this._currentProgramBytes;
+    }
+
+    /** The name of the current program in memory/panel. */
+    get currentProgramName() {
+        return this._currentProgramName;
+    }
+
+    /** Active program number (0..35), or null if in manual/edit buffer. */
+    get activeProgramNumber() {
+        return this._activeProgramNumber;
+    }
+
+    set activeProgramNumber(num) {
+        this._activeProgramNumber = num;
+    }
+
+    /**
+     * Updates the name of the current program.
+     * Updates internal program bytes and the program list if this is a stored slot.
+     */
+    renameCurrentProgram(newName) {
+        this._currentProgramName = (newName || "").slice(0, 16);
+        if (this._currentProgramBytes) {
+            writePatchName(this._currentProgramBytes, this._currentProgramName, this._sysexLayout);
+        }
+        if (this._activeProgramNumber !== null && this._activeProgramNumber !== undefined) {
+            this._rememberProgramName(this._activeProgramNumber, this._currentProgramName);
+        }
+    }
+
+    /**
+     * Uploads an 80-byte program to the POD's edit buffer (what the POD is playing
+     * right now). The panel repaints from the programLoaded listeners, exactly as
+     * it would if the POD had sent the dump itself.
+     *
+     * @param {Uint8Array} [programBytes] - if omitted, uses currentProgramBytes
+     * @param {object} [options]
+     * @param {boolean} [options.keepActiveProgram] - by default the edit buffer no
+     *        longer belongs to any stored slot, so the active program is cleared;
+     *        callers that are pushing a slot's contents back set this to keep it.
+     */
+    async uploadEditBuffer(programBytes = this._currentProgramBytes, options = {}) {
+        if (!this._isOpen || !programBytes) return false;
+        const msg = buildEditBufferDump(programBytes, this._sysexLayout?.version ?? 1);
+        this._midi.send(this._midiDevice.outputID, msg);
+        this._currentProgramBytes = new Uint8Array(programBytes);
+        this._currentProgramName = readPatchName(programBytes, this._sysexLayout);
+        if (!options.keepActiveProgram) this._activeProgramNumber = null;
+
+        const program = readProgram(this._currentProgramBytes, this._sysexLayout);
+        const programChangeNumber = this._currentProgramChange;
+        const payload = {
+            type: DUMP_TYPE_EDIT_BUFFER,
+            programNumber: undefined,
+            programChangeNumber,
+            label: programChangeNumber === undefined ? undefined : this.programLabelFor(programChangeNumber),
+            name: program.name,
+            values: program.values,
+        };
+        for (const listener of this._programLoadedListeners) listener(this, payload);
+        return true;
+    }
+
+    /**
+     * Uploads an 80-byte program into a stored memory slot on the POD (1A-9D).
+     * Also updates the cached program list entry and emits a change event.
+     * @param {number} programNumber - 0 to 35
+     * @param {Uint8Array} programBytes - 80 bytes
+     */
+    async uploadProgramToSlot(programNumber, programBytes) {
+        if (!this._isOpen || !programBytes || programNumber < 0 || programNumber >= (this.programCount || 36)) {
+            return false;
+        }
+        const msg = buildProgramDump(programNumber, programBytes, this._sysexLayout?.version ?? 1);
+        this._midi.send(this._midiDevice.outputID, msg);
+        // Two copies, not one shared buffer: panel edits must not rewrite the
+        // cached copy of what the POD now has stored.
+        this._programBlobs[programNumber] = new Uint8Array(programBytes);
+        if (this._activeProgramNumber === programNumber) {
+            this._currentProgramBytes = new Uint8Array(programBytes);
+            this._currentProgramName = readPatchName(programBytes, this._sysexLayout);
+        }
+        const name = readPatchName(programBytes, this._sysexLayout);
+        this._rememberProgramName(programNumber, name);
+        return true;
+    }
+
+    // --- Unified Zoom-compatible patch slot methods -------------------------
+
+    async downloadPatchFromMemorySlot(slotIndex) {
+        const loaded = await this.requestProgramDump(slotIndex);
+        return loaded ? this._currentProgramBytes : undefined;
+    }
+
+    async uploadPatchToMemorySlot(programBytes, slotIndex) {
+        return await this.uploadProgramToSlot(slotIndex, programBytes);
+    }
+
+    async updatePatchListFromPedal() {
+        return await this.requestProgramNames();
     }
 
     // --- Dump bookkeeping --------------------------------------------------
@@ -343,6 +471,7 @@ export class BassPodProDevice {
     /** Turns the 36 program blobs of an all-programs dump into the patch list. */
     _setProgramList(programBlobs) {
         const count = Math.min(this.programCount || programBlobs.length, programBlobs.length);
+        this._programBlobs = Array.from(programBlobs.slice(0, count), (blob) => new Uint8Array(blob));
         const list = [];
         for (let i = 0; i < count; i++) {
             const programChangeNumber = this.programChangeFor(i);
@@ -388,7 +517,16 @@ export class BassPodProDevice {
         const programChangeNumber = programNumber === undefined
             ? this._currentProgramChange
             : this.programChangeFor(programNumber);
-        if (programNumber !== undefined) this._rememberProgramName(programNumber, program.name);
+
+        this._currentProgramBytes = new Uint8Array(parsed.bytes.slice(0, size));
+        this._currentProgramName = program.name;
+        if (programNumber !== undefined) {
+            this._activeProgramNumber = programNumber;
+            // A copy: the stored bytes must not follow panel edits, which land
+            // in _currentProgramBytes until something is written back.
+            this._programBlobs[programNumber] = new Uint8Array(this._currentProgramBytes);
+            this._rememberProgramName(programNumber, program.name);
+        }
 
         const payload = {
             type: parsed.type,
@@ -441,6 +579,9 @@ export class BassPodProDevice {
                     return;
                 }
                 this._recentlySent.delete(data1);
+            }
+            if (this._currentProgramBytes) {
+                updateProgramBytesFromCc(this._currentProgramBytes, this._sysexLayout, data1, data2);
             }
             const control = this._ccToControl.get(data1);
             for (const listener of this._parameterChangedListeners) listener(this, data1, data2, control);

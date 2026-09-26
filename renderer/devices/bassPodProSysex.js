@@ -100,6 +100,68 @@ export function buildAllProgramsDumpRequest() {
 }
 
 /**
+ * Builds a SysEx dump message for one stored program (upload / write to memory slot).
+ * F0 00 01 0C 02 01 00 <program #> <version> <160 nibbles> F7
+ * @param {number} programNumber 0x00 - 0x23 (1A - 9D)
+ * @param {Uint8Array|Array} programBytes 80 bytes of program data
+ * @param {number} version default 1
+ */
+export function buildProgramDump(programNumber, programBytes, version = DUMP_VERSION) {
+    const nibbles = encodeNibbles(programBytes);
+    return Uint8Array.from([
+        SYSEX_START,
+        ...LINE6_MANUFACTURER_ID,
+        BASS_POD_PRO_FAMILY_ID,
+        OPCODE_DUMP,
+        DUMP_TYPE_PROGRAM,
+        programNumber & 0x7f,
+        version & 0x7f,
+        ...nibbles,
+        SYSEX_END,
+    ]);
+}
+
+/**
+ * Builds a SysEx dump message for the edit buffer (upload / write what is playing).
+ * F0 00 01 0C 02 01 01 <version> <160 nibbles> F7
+ * @param {Uint8Array|Array} programBytes 80 bytes of program data
+ * @param {number} version default 1
+ */
+export function buildEditBufferDump(programBytes, version = DUMP_VERSION) {
+    const nibbles = encodeNibbles(programBytes);
+    return Uint8Array.from([
+        SYSEX_START,
+        ...LINE6_MANUFACTURER_ID,
+        BASS_POD_PRO_FAMILY_ID,
+        OPCODE_DUMP,
+        DUMP_TYPE_EDIT_BUFFER,
+        version & 0x7f,
+        ...nibbles,
+        SYSEX_END,
+    ]);
+}
+
+/**
+ * Builds a SysEx dump message for all 36 programs.
+ * F0 00 01 0C 02 01 02 <version> <5760 nibbles> F7
+ * @param {Uint8Array|Array} allProgramsBytes 2880 bytes (36 * 80) of programs
+ * @param {number} version default 1
+ */
+export function buildAllProgramsDump(allProgramsBytes, version = DUMP_VERSION) {
+    const nibbles = encodeNibbles(allProgramsBytes);
+    return Uint8Array.from([
+        SYSEX_START,
+        ...LINE6_MANUFACTURER_ID,
+        BASS_POD_PRO_FAMILY_ID,
+        OPCODE_DUMP,
+        DUMP_TYPE_ALL_PROGRAMS,
+        version & 0x7f,
+        ...nibbles,
+        SYSEX_END,
+    ]);
+}
+
+/**
  * Converts a control-change value into the value a dump carries for it - the
  * inverse of valueFromField().
  *
@@ -187,6 +249,86 @@ export function readBitField(byte, bits) {
     const width = high - low + 1;
     const mask = ((1 << width) - 1) << low;
     return (byte & mask) >>> low;
+}
+
+/**
+ * Writes a bit field into a program byte, returning the updated byte.
+ * @param byte The existing raw program byte (or 0)
+ * @param bits [highest bit, lowest bit], both inclusive. Omitted means "the whole byte".
+ * @param value The value to place into those bits
+ */
+export function writeBitField(byte, bits, value) {
+    if (!bits) return value & 0x7f;
+    const [high, low] = bits;
+    if (high < low) return byte;
+    const width = high - low + 1;
+    const mask = ((1 << width) - 1) << low;
+    const shiftedValue = ((value & ((1 << width) - 1)) << low) & 0xff;
+    return (byte & ~mask) | shiftedValue;
+}
+
+/**
+ * Converts a control value into what should be stored in the program byte field.
+ * Inverse of valueFromField.
+ * @param field "sysexLayout.fields" entry
+ * @param value Control-change value
+ */
+export function fieldToStoredValue(field, value) {
+    switch (field.mode) {
+        case "bit": {
+            const off = field.offValue ?? 0;
+            const on = field.onValue ?? 127;
+            // Control-change switches are 0-63 off and 64-127 on - the MIDI
+            // convention, and what the POD documents for its two switches, so
+            // 64 is the boundary rather than the midpoint of the two values
+            // (a gate pairing 0 with 64 must still read 63 as "off"). A field
+            // whose on value sits below 64 - a toggle reporting 1 - uses its
+            // own on value, and an inverted pair flips the comparison.
+            if (on < off) return value <= (on + off) / 2 ? 1 : 0;
+            return value >= (on >= 64 ? 64 : on) ? 1 : 0;
+        }
+        case "scale":
+            return storedValueFromCc(value, field.scale ?? 1);
+        default:
+            return value;
+    }
+}
+
+/**
+ * Updates a program's 80 bytes in-place with a control-change value for a given CC number.
+ * Returns true if a field was found and updated, false otherwise.
+ * @param {Uint8Array} programBytes
+ * @param {object} layout
+ * @param {number} ccNumber
+ * @param {number} ccValue
+ */
+export function updateProgramBytesFromCc(programBytes, layout, ccNumber, ccValue) {
+    let updated = false;
+    for (const field of layout?.fields ?? []) {
+        if (field.cc === ccNumber && field.byte !== undefined && field.byte < programBytes.length) {
+            const stored = fieldToStoredValue(field, ccValue);
+            programBytes[field.byte] = writeBitField(programBytes[field.byte], field.bits, stored);
+            updated = true;
+        }
+    }
+    return updated;
+}
+
+/**
+ * Writes a name string into an 80-byte program, padded with spaces (ASCII 32).
+ * @param {Uint8Array} programBytes
+ * @param {string} name
+ * @param {object} layout
+ */
+export function writePatchName(programBytes, name, layout) {
+    const start = layout?.nameByte ?? 64;
+    const length = layout?.nameLength ?? 16;
+    const cleanName = (name || "").slice(0, length);
+    for (let i = 0; i < length; i++) {
+        const charCode = i < cleanName.length ? cleanName.charCodeAt(i) : 0x20;
+        // Keep printable ASCII (32-126); replace anything else with space
+        programBytes[start + i] = (charCode >= 32 && charCode < 127) ? charCode : 0x20;
+    }
 }
 /**
  * Converts one dump field into the control-change value the panel shows.

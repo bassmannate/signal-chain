@@ -20,21 +20,30 @@ import {
   DUMP_TYPE_ALL_PROGRAMS,
   DUMP_TYPE_EDIT_BUFFER,
   DUMP_TYPE_PROGRAM,
+  OPCODE_DUMP,
   OPCODE_REQUEST,
   PROGRAM_BYTE_COUNT,
+  buildAllProgramsDump,
   buildAllProgramsDumpRequest,
+  buildEditBufferDump,
   buildEditBufferDumpRequest,
+  buildProgramDump,
   buildProgramDumpRequest,
   decodeNibbles,
   encodeNibbles,
+  fieldToStoredValue,
   isDecodableDump,
   parseDumpMessage,
   readBitField,
+  readPatchName,
   readProgram,
   readProgramValues,
   splitPrograms,
   storedValueFromCc,
+  updateProgramBytesFromCc,
   valueFromField,
+  writeBitField,
+  writePatchName,
 } from "../renderer/devices/bassPodProSysex.js";
 import { BassPodProDevice } from "../renderer/devices/BassPodProDevice.js";
 import { formatByBands } from "../renderer/ui/controls.js";
@@ -588,4 +597,216 @@ test("fixture: the ratio readout names the band the POD would show", () => {
   assert.deepEqual([...new Set(named)].sort(), [
     "12:1 (78)", "2:1", "2:1 (1)", "3.3:1 (30)", "3.3:1 (32)", "8:1", "Inf:1 (104)",
   ].sort(), "every ratio in the capture lands in a band the POD names");
+});
+
+// --- Writing programs back ---------------------------------------------------
+//
+// The read side has always worked; these cover the write side, which is what
+// Save/Load/Backup/Restore and renaming need.
+
+test("writePatchName writes 16 space-padded ASCII characters the reader takes back", () => {
+  const bytes = makeProgram("Eighties");
+
+  writePatchName(bytes, "Renamed", layout);
+  assert.equal(readPatchName(bytes, layout), "Renamed");
+  // The PDF lists the name as 16 ASCII characters; real hardware pads them
+  // with spaces rather than leaving zeros or the tail of the old name.
+  assert.equal(bytes[64 + 7], 0x20, "the byte after the name is a space");
+  assert.equal(bytes[64 + 15], 0x20, "the last name byte is a space");
+
+  // Shortening must blank the tail of the old name instead of leaving it.
+  writePatchName(bytes, "Ab", layout);
+  assert.equal(readPatchName(bytes, layout), "Ab");
+  assert.equal(bytes[66], 0x20, "the rest of the old name is cleared");
+
+  // Longer than 16 characters is cut at the field's width, not beyond it.
+  writePatchName(bytes, "0123456789ABCDEFEXTRA", layout);
+  assert.equal(readPatchName(bytes, layout), "0123456789ABCDEF");
+  assert.equal(bytes[80], undefined, "the name stops at byte 79");
+
+  // Anything the POD's display cannot show becomes a space, never a zero -
+  // readPatchName stops at a zero byte and would truncate the name there.
+  writePatchName(bytes, "A\u0000B\u00ffC", layout);
+  assert.equal(readPatchName(bytes, layout), "A B C");
+});
+
+test("writeBitField and fieldToStoredValue undo readBitField and valueFromField", () => {
+  assert.equal(writeBitField(0b11110000, [3, 0], 0b1010), 0b11111010, "bits outside the field survive");
+  assert.equal(writeBitField(0b11110000, [7, 4], 0b0011), 0b00110000);
+  assert.equal(writeBitField(0xff, undefined, 0x05), 0x05, "no field means the whole byte");
+  assert.equal(readBitField(writeBitField(0, [5, 0], 63), [5, 0]), 63);
+
+  // A 6-bit scale-2 field: the panel's 0-126 range is stored as 0-63.
+  const channelVolume = { mode: "scale", scale: 2, byte: 10, bits: [5, 0] };
+  assert.equal(fieldToStoredValue(channelVolume, 126), 63, "the top of the range");
+  assert.equal(fieldToStoredValue(channelVolume, 0), 0);
+  assert.equal(fieldToStoredValue(channelVolume, 63), 32, "odd control values round up");
+
+  const program = new Uint8Array(PROGRAM_BYTE_COUNT);
+  program[10] = writeBitField(program[10], channelVolume.bits, fieldToStoredValue(channelVolume, 126));
+  assert.equal(valueFromField(channelVolume, program, { max: 126 }), 126);
+
+  // A switch stores one bit and reads back as the control's on/off values.
+  const noiseGate = { mode: "bit", byte: 0, bits: [0, 0], offValue: 0, onValue: 64 };
+  assert.equal(fieldToStoredValue(noiseGate, 64), 1, "the PDF: 64-127 is on");
+  assert.equal(fieldToStoredValue(noiseGate, 63), 0, "0-63 is off");
+  assert.equal(fieldToStoredValue(noiseGate, 127), 1);
+  program[0] = writeBitField(program[0], noiseGate.bits, fieldToStoredValue(noiseGate, 100));
+  assert.equal(valueFromField(noiseGate, program, noiseGate), 64);
+
+  // The other switch pairs 0 with 127 but still switches at 64, the same
+  // boundary the gate uses - not at the midpoint of the two values.
+  const applyFxToDi = { mode: "bit", byte: 2, bits: [0, 0], offValue: 0, onValue: 127 };
+  assert.equal(fieldToStoredValue(applyFxToDi, 63), 0);
+  assert.equal(fieldToStoredValue(applyFxToDi, 64), 1);
+  assert.equal(fieldToStoredValue(applyFxToDi, 127), 1);
+});
+
+test("updateProgramBytesFromCc writes a control change into the byte its field names", () => {
+  const bytes = makeProgram("x");
+
+  assert.equal(updateProgramBytesFromCc(bytes, layout, 17, 126), true, "channel volume, CC 17");
+  assert.equal(bytes[10], 63, "byte 10 is 6 bits - stored * 2 is the control change");
+  assert.equal(readProgramValues(bytes, layout).get(17), 126, "and reads back at the top of its range");
+
+  assert.equal(updateProgramBytesFromCc(bytes, layout, 12, 9), true, "amp model, CC 12");
+  assert.equal(bytes[3], 9, "byte 3 holds the amp model directly");
+
+  assert.equal(updateProgramBytesFromCc(bytes, layout, 999, 5), false, "a CC with no field changes nothing");
+});
+
+test("the upload dump messages match the envelopes in the Line 6 document", () => {
+  const program = makeProgram("Eighties");
+
+  const programDump = buildProgramDump(2, program, 1);
+  assert.equal(programDump.length, 8 + 1 + 160 + 1, "header, program #, version, 160 nibbles, EOX");
+  assert.deepEqual([...programDump.slice(0, 9)],
+    [0xf0, 0x00, 0x01, 0x0c, 0x02, 0x01, 0x00, 0x02, 0x01],
+    "F0 00 01 0C 02 01 00 <program #> <version>");
+
+  const parsedProgram = parseDumpMessage(programDump);
+  assert.equal(parsedProgram.opcode, OPCODE_DUMP, "opcode 01 is a dump, not a request");
+  assert.equal(parsedProgram.type, DUMP_TYPE_PROGRAM);
+  assert.equal(parsedProgram.programNumber, 2);
+  assert.equal(parsedProgram.version, 1, "version 1 is what the POD expects");
+  assert.equal(parsedProgram.byteCount, PROGRAM_BYTE_COUNT);
+  assert.deepEqual([...parsedProgram.bytes], [...program], "the program survives the round trip");
+
+  const editDump = buildEditBufferDump(program, 1);
+  assert.equal(editDump.length, 7 + 1 + 160 + 1, "header, version, 160 nibbles, EOX");
+  assert.deepEqual([...editDump.slice(0, 8)],
+    [0xf0, 0x00, 0x01, 0x0c, 0x02, 0x01, 0x01, 0x01],
+    "F0 00 01 0C 02 01 01 <version>");
+  const parsedEdit = parseDumpMessage(editDump);
+  assert.equal(parsedEdit.type, DUMP_TYPE_EDIT_BUFFER);
+  assert.equal(parsedEdit.programNumber, undefined, "the edit buffer names no program");
+  assert.deepEqual([...parsedEdit.bytes], [...program]);
+
+  const all = buildAllProgramsDump(new Uint8Array(36 * PROGRAM_BYTE_COUNT), 1);
+  assert.equal(all.length, 7 + 1 + 5760 + 1, "header, version, 5760 nibbles, EOX");
+  const parsedAll = parseDumpMessage(all);
+  assert.equal(parsedAll.type, DUMP_TYPE_ALL_PROGRAMS);
+  assert.equal(parsedAll.byteCount, 36 * PROGRAM_BYTE_COUNT, "2880 bytes = 36 x 80");
+
+  // Requests and dumps share the manufacturer and family; only the opcode differs.
+  assert.deepEqual([...buildProgramDumpRequest(2).slice(0, 5)], [...programDump.slice(0, 5)]);
+  assert.equal(parseDumpMessage(buildProgramDumpRequest(2)).opcode, OPCODE_REQUEST);
+});
+
+test("the all-programs dump keeps the bytes as well as the names, for Backup All", async () => {
+  const { device } = await openFakeDevice(new Map([[DUMP_TYPE_ALL_PROGRAMS, allProgramsReply()]]));
+
+  const programs = await device.requestProgramNames();
+  assert.equal(programs.length, 36);
+  assert.equal(device.storedProgramBytes.length, 36, "every slot has its bytes to write to disk");
+  for (let i = 0; i < 36; i++) {
+    assert.equal(device.storedProgramBytes[i].length, PROGRAM_BYTE_COUNT);
+    assert.equal(readPatchName(device.storedProgramBytes[i], layout), `Patch ${i + 1}`);
+  }
+  await device.close();
+});
+
+test("renaming a program writes the name into the bytes and the patch list", async () => {
+  const replies = new Map([
+    [DUMP_TYPE_ALL_PROGRAMS, allProgramsReply()],
+    [DUMP_TYPE_PROGRAM, dumpReply({ type: DUMP_TYPE_PROGRAM, programNumber: 2, programBytes: makeProgram("Old Name") })],
+  ]);
+  const { device } = await openFakeDevice(replies);
+
+  await device.requestProgramNames();
+  const loaded = await device.loadProgram(2);
+  assert.equal(loaded.name, "Old Name");
+  assert.equal(device.activeProgramNumber, 2);
+  assert.equal(device.currentProgramName, "Old Name");
+
+  device.renameCurrentProgram("New Name");
+
+  assert.equal(readPatchName(device.currentProgramBytes, layout), "New Name",
+    "bytes 64-79 carry the name, the only place the POD stores it");
+  assert.equal(device.currentProgramName, "New Name");
+  assert.equal(device.programs[2].name, "New Name", "the sidebar follows");
+  assert.equal(device.programs[1].name, "Patch 2", "the neighbours are untouched");
+
+  // Panel edits live in the current bytes but must not rewrite what the POD
+  // has stored, or Backup All would save unsaved knobs as if they were stored.
+  device.setParameter(17, 126);
+  assert.equal(readProgramValues(device.currentProgramBytes, layout).get(17), 126, "the buffer took the knob");
+  assert.equal(readProgramValues(device.storedProgramBytes[2], layout).get(17),
+    readProgramValues(makeProgram("Old Name"), layout).get(17),
+    "the stored copy did not");
+  await device.close();
+});
+
+test("uploading a program sends the dump message the POD expects and updates the list", async () => {
+  const replies = new Map([[DUMP_TYPE_ALL_PROGRAMS, allProgramsReply()]]);
+  const { midi, device } = await openFakeDevice(replies);
+  await device.requestProgramNames();
+  midi.sent.length = 0;
+
+  const program = makeProgram("Restored");
+  const ok = await device.uploadProgramToSlot(3, program);
+
+  assert.equal(ok, true);
+  assert.deepEqual(midi.lastMessage, [...buildProgramDump(3, program, layout.version ?? 1)],
+    "the exact bytes that go on the wire");
+  assert.equal(device.programs[3].name, "Restored", "the sidebar shows the new name");
+  assert.deepEqual([...device.storedProgramBytes[3]], [...program], "the backup cache follows the write");
+  assert.notEqual(device.storedProgramBytes[3], program,
+    "by copy, not by reference - later edits must not alias the cache");
+
+  assert.equal(await device.uploadProgramToSlot(36, program), false, "there is no slot 37");
+  await device.close();
+});
+
+test("uploading the edit buffer repaints the panel and lets go of the stored slot", async () => {
+  const replies = new Map([
+    [DUMP_TYPE_ALL_PROGRAMS, allProgramsReply()],
+    [DUMP_TYPE_PROGRAM, dumpReply({ type: DUMP_TYPE_PROGRAM, programNumber: 2, programBytes: makeProgram("Playing") })],
+    [DUMP_TYPE_EDIT_BUFFER, dumpReply({ type: DUMP_TYPE_EDIT_BUFFER, programBytes: makeProgram("Playing") })],
+  ]);
+  const { midi, device } = await openFakeDevice(replies);
+  const seen = [];
+  device.addProgramLoadedListener((d, payload) => seen.push(payload));
+
+  await device.requestProgramNames();
+  await device.loadProgram(2);
+  assert.equal(device.activeProgramNumber, 2, "clicking a program selects it");
+  assert.equal(seen.length, 1, "the real dump fired the listener once");
+  midi.sent.length = 0;
+
+  // Loading a file: the bytes belong to no stored slot, so the selection goes.
+  const program = makeProgram("From File");
+  assert.equal(await device.uploadEditBuffer(program), true);
+  assert.deepEqual(midi.lastMessage, [...buildEditBufferDump(program, layout.version ?? 1)]);
+  assert.equal(device.activeProgramNumber, null, "the edit buffer belongs to no slot");
+  assert.equal(seen.length, 2, "the upload repaints the panel like a real dump would");
+  assert.equal(seen[1].name, "From File");
+  assert.deepEqual([...seen[1].values.entries()], [...readProgramValues(program, layout).entries()],
+    "every control the dump describes is repainted");
+
+  // A slot's own contents pushed back by Restore to Slot keep the selection.
+  device.activeProgramNumber = 2;
+  assert.equal(await device.uploadEditBuffer(program, { keepActiveProgram: true }), true);
+  assert.equal(device.activeProgramNumber, 2, "a slot's contents written back are still that slot");
+  await device.close();
 });

@@ -57,8 +57,8 @@ sym.bios.is in a browser).
   MS-70CDR+ is already bundled in `renderer/data/` though - it just
   needs that pedal's model number confirmed and added.
 - ❌ Patch renaming isn't sent to the pedal live yet (real hardware sends
-  name edits character-by-character; this app currently only updates
-  the name locally until you hit Sync)
+  name edits character-by-character; this app lets you edit the name box
+  and updates the patch, but you still have to hit Sync to push it down)
 - ✅ Re-order effects within a patch - drag and drop modules within the
   signal chain to reorder them
 - ✅ Add effects from a drag-and-drop library - effect library panel shows
@@ -105,8 +105,27 @@ the app drives it live rather than uploading a patch blob. What works today:
   ask for it. Manual and the tuner have no stored program behind them, so the
   panel goes back to "unknown" (dimmed) instead of leaving the last patch on
   screen looking current.
-- ❌ Save/Load/Backup/Restore - these need the app to *send* a program dump
-  back to the POD, which isn't wired up yet (reading works, writing doesn't)
+- ✅ Save/Load/Backup/Restore. The POD side of these moves 80-byte programs as
+  `.syx` files holding one complete sys-ex dump - the same bytes the pedal
+  sends, so the files are readable by any Line 6 tool. **Save** writes the
+  program on screen (as a single-program dump when it came from a slot, or an
+  edit-buffer dump when it didn't); **Load** reads a file into the edit buffer
+  and repaints the panel; **Backup All** reads all 36 programs in one
+  all-programs dump and writes one `.syx` per slot named
+  `1A_Name.syx`-style; **Restore to Slot** writes a file into the program the
+  sidebar points at and shows it too. Raw 80-byte files are accepted on the way
+  back in as well.
+- ✅ Renaming: the name box in the header is editable for the POD too. The name
+  lives in bytes 64-79 of the program, so it can only travel as a program dump -
+  control changes cannot carry it. Editing the box writes the new name into the
+  copy of the program the app holds, then pushes that program back to its slot
+  (so the rename survives re-selecting it) and to the edit buffer (so the POD
+  shows it now). With no slot selected, only the edit buffer gets the new name.
+
+  These write paths follow the Line 6 document (`mapping/Bass POD Pro Sysex -
+  English .pdf`) and are covered by the byte-level tests, but **have not been
+  checked against real hardware yet** - the read side is the only half a POD has
+  actually been plugged into.
 
 Two things worth knowing before connecting one:
 
@@ -155,11 +174,12 @@ app stitches them back together before parsing (see `_handleSysex()`).
 - Verify functionality with other devices. I only have the MS-60B+ to test
   with so other pedals such as the MS-50G+ are all theoretical.
 - More identifiable effect icons. Just about all of them are completely generic.
-- Bass POD Pro: sending a program dump back to the POD, which is what
-  Save/Load/Backup/Restore need. The read side is done
-  (`renderer/devices/bassPodProSysex.js` plus the `sysexLayout` byte map in
-  `renderer/data/bass-pod-pro.json`); the write side needs the same 80 bytes
-  nibble-encoded again, with the version byte the POD expects.
+- Bass POD Pro: check the write path against real hardware. Sending a program
+  dump back to the POD (`buildProgramDump` / `buildEditBufferDump` /
+  `buildAllProgramsDump` in `renderer/devices/bassPodProSysex.js`, nibble-encoded
+  with the version byte the document asks for) is what Save/Load/Backup/Restore
+  and renaming use now, and the byte layouts are pinned by tests - but no POD has
+  been plugged in to confirm it accepts an upload, or what it does with one.
 - Bass POD Pro: the remaining decoded-but-not-on-the-panel parameters - gate
   threshold (CC 23) and decay (CC 24), wah (CC 4/44/45), volume pedal
   (CC 7/46/47) and D.I. alignment/mix (CC 74/75). They are already in
@@ -168,7 +188,8 @@ app stitches them back together before parsing (see `_handleSysex()`).
 - Bass POD Pro: the compressor's *separate* threshold (program byte 26) has no
   control-change number at all in the Line 6 document, so it can never be set
   from this panel - only read, and only once something shows dump-only values.
-  Setting it would need the sys-ex write path above.
+  Setting it means writing into the program bytes directly, which the sys-ex
+  write path above now makes possible.
 - Bass POD Pro: confirm on hardware that the POD announces program changes made
   on its own front panel (the sys-ex PDF says it transmits 0 = Manual, 1-36,
   Tuner = 37; capturing it needs somebody to step on the pedal). The app
@@ -184,8 +205,10 @@ No MIDI hardware, no Electron and no display needed. The vendored protocol
 code in `renderer/lib/` is plain ES modules, so `test/bass-pod-pro.test.mjs`
 drives the real identity-reply parser and the real CC adapter through a fake
 MIDI proxy and asserts the exact bytes on the wire,
-`test/bass-pod-pro-sysex.test.mjs` does the same for the dump codec and the
-patch-list flow, and `test/controls.test.mjs` drives the panel widgets through
+`test/bass-pod-pro-sysex.test.mjs` does the same for the dump codec, the
+patch-list flow and the write side - renaming a program, the exact upload
+messages Save/Load/Backup/Restore send, and the bytes Backup All would write -
+and `test/controls.test.mjs` drives the panel widgets through
 a minimal DOM stub. `renderer/package.json` exists only so the Node test
 runner treats `renderer/**/*.js` as ES modules - the app itself never reads it.
 
@@ -228,7 +251,7 @@ renderer/
                        layout that device gets
   devices/bassPodProSysex.js
                        the POD's dump codec: requests, nibble encoding, and
-                       program bytes -> panel values
+                       program bytes <-> panel values, both directions
   ui/controls.js       knobs/selects/toggles shared by both view layouts
   package.json         {"type": "module"} - for the Node test runner only
 test/                  node --test suites (no test dependencies)

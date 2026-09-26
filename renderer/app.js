@@ -3,6 +3,13 @@ import { MIDIProxyForWebMIDIAPI } from "./lib/MIDIProxyForWebMIDIAPI.js";
 import { getMIDIDeviceList } from "./lib/miditools.js";
 import { findProfileFor, loadProfileData } from "./devices/profiles.js";
 import {
+  PROGRAM_BYTE_COUNT,
+  buildEditBufferDump,
+  buildProgramDump,
+  isDecodableDump,
+  parseDumpMessage,
+} from "./devices/bassPodProSysex.js";
+import {
   buildActionUnit,
   buildKnobUnit,
   buildSelectUnit,
@@ -89,15 +96,14 @@ function setConnected(open, name) {
   // Sync works for both layouts: on the Zoom side it uploads the patch blob,
   // on the POD side it replays every panel parameter as a control change.
   els.btnSync.disabled = !open;
-  els.btnSync.title = isPanel
-    ? "Send every parameter on this panel to the POD as a control change"
-    : els.btnSync.dataset.chainTitle;
+  els.btnSync.title = (isPanel ? els.btnSync.dataset.podTitle : undefined) ?? els.btnSync.dataset.chainTitle;
 
-  // Backing up, saving, loading and restoring all move whole patch blobs, so
-  // they stay Zoom-only until the POD's sys-ex program dump is implemented.
+  // Save / Load / Backup / Restore work on both kinds of pedal now: the Zoom
+  // side moves whole patch blobs, the POD side moves 80-byte programs as .syx
+  // sys-ex files. Only the wording of the tooltips differs.
   for (const b of [els.btnBackup, els.btnSave, els.btnLoad, els.btnRestore]) {
-    b.disabled = !open || !isChain;
-    b.title = isChain ? b.dataset.chainTitle : POD_SYSEX_PENDING_TITLE;
+    b.disabled = !open;
+    b.title = (isPanel ? b.dataset.podTitle : undefined) ?? b.dataset.chainTitle;
   }
 
   els.chainEmpty.classList.toggle("hidden", open);
@@ -105,10 +111,13 @@ function setConnected(open, name) {
   els.panelWrap.classList.toggle("hidden", !(open && isPanel));
   els.library.classList.toggle("hidden", !(open && isChain));
 
-  // The patch name and tempo fields belong to the Zoom patch model. The POD
-  // has neither (its program names live in the sys-ex dump), so hide them
-  // rather than show empty fields pretending to be something.
-  els.patchName.classList.toggle("hidden", !isChain);
+  // The patch name field is the rename box on both layouts: a Zoom patch
+  // carries its name in the blob, a POD program in bytes 64-79 of its dump.
+  // On the POD side it stays blank until a dump has actually been read, so
+  // there is never a rename box with nothing behind it. Tempo belongs to the
+  // Zoom patch model only, so that one stays hidden here.
+  if (!open || isPanel) els.patchName.value = "";
+  els.patchName.disabled = !open || (isPanel && !device?.currentProgramBytes);
   els.patchTempoWrap.classList.toggle("hidden", !isChain);
 
   // The sidebar holds patch files for a Zoom pedal and the POD's 36 programs
@@ -129,14 +138,23 @@ function setConnected(open, name) {
   updateRestoreButtonState();
 }
 
-const POD_SYSEX_PENDING_TITLE =
-  "Not available for the Bass POD Pro yet - the app can read a program dump, but writing one back to the POD isn't wired up";
+// Tooltips the transport buttons carry while a Bass POD Pro is connected. The
+// markup's own titles are the Zoom wording, kept in dataset.chainTitle.
+const POD_TRANSPORT_TITLES = {
+  "btn-sync": "Send every parameter on this panel to the POD as a control change",
+  "btn-restore": "Load a program file directly into the selected program slot",
+  "btn-backup": "Back up every program on the POD to a folder of .syx files",
+  "btn-save": "Save the current program to a file",
+  "btn-load": "Load a program file into the POD's edit buffer",
+};
 
 function setTransportAvailability() {
   // Remember the titles the markup came with, so switching between devices
-  // restores them instead of leaving the POD's placeholder text behind.
+  // restores them instead of leaving the other device's wording behind.
   for (const b of [els.btnSync, els.btnBackup, els.btnSave, els.btnLoad, els.btnRestore]) {
     if (b.dataset.chainTitle === undefined) b.dataset.chainTitle = b.title;
+    const podTitle = POD_TRANSPORT_TITLES[b.id];
+    if (podTitle !== undefined) b.dataset.podTitle = podTitle;
   }
 }
 
@@ -371,6 +389,10 @@ async function loadPodProgramList() {
 
 async function selectProgramFromList(programNumber) {
   if (!device?.isOpen) return;
+  // Which program the sidebar points at - also the target for "Restore to
+  // Slot", the same variable the Zoom side uses for its memory slots.
+  selectedMemorySlot = programNumber;
+  updateRestoreButtonState();
   const label = device.programLabelFor(device.programChangeFor(programNumber)) ?? `program ${programNumber + 1}`;
   status(`Recalling ${label} on the POD…`);
   const loaded = await device.loadProgram(programNumber);
@@ -422,6 +444,9 @@ function forgetPanelValues(message) {
   for (const handle of panelControls.values()) handle.setUnset?.();
   activeProgramNumber = null;
   highlightActiveProgram();
+  // Manual and the tuner hold no program, so there is nothing to rename.
+  els.patchName.value = "";
+  els.patchName.disabled = true;
   els.crcIndicator.textContent = `${panelControls.size} live controls`;
   if (message) els.panelNote.textContent = message;
 }
@@ -447,6 +472,11 @@ function applyProgramValues(loaded) {
   highlightActiveProgram();
 
   const label = loaded.label ?? "Current patch";
+  if (loaded.label) els.patchNumber.textContent = loaded.label;
+  // Don't yank the box out from under somebody still typing in it: the rename
+  // handler is async, and the name it writes back may lag their keystrokes.
+  if (document.activeElement !== els.patchName) els.patchName.value = loaded.name ?? "";
+  els.patchName.disabled = false;
   els.panelProgram.textContent = loaded.name ? `${label} ${loaded.name}` : label;
   els.crcIndicator.textContent = `${fromDump} of ${panelControls.size} controls from the dump`;
   els.panelNote.textContent = fromDump >= panelControls.size
@@ -1029,11 +1059,157 @@ function patchToBytes(patch) {
   return p.PTCF !== null ? p.buildPTCFChunk(device.ptcfNameLength) : p.buildMSDataBuffer();
 }
 
+// --- Bass POD Pro patch files ---------------------------------------------
+//
+// A POD program is saved as a .syx file holding one complete sys-ex dump
+// message: the same bytes the pedal sends, so any tool that speaks the Line 6
+// format can read them. Raw 80-byte programs are accepted on the way back in
+// too, because that is what the PDF's PROGRAM DATA table describes.
+
+const POD_PATCH_FILTERS = [{ name: "Bass POD Pro Program", extensions: ["syx"] }];
+
+function podProgramVersion() {
+  return profileData?.sysexLayout?.version ?? 1;
+}
+
+/** The dump message to write to disk for the program currently on screen. */
+function currentPodDumpMessage() {
+  const bytes = device?.currentProgramBytes;
+  if (!bytes) return undefined;
+  const slot = device.activeProgramNumber;
+  return slot === null || slot === undefined
+    ? buildEditBufferDump(bytes, podProgramVersion())
+    : buildProgramDump(slot, bytes, podProgramVersion());
+}
+
+/**
+ * Pulls the 80 program bytes out of a file the user picked: either a raw
+ * 80-byte program, or a .syx file carrying one full dump message.
+ * @returns Uint8Array|undefined
+ */
+function podProgramFromFileData(data) {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data ?? []);
+  if (bytes.length === PROGRAM_BYTE_COUNT) return bytes;
+  const parsed = parseDumpMessage(bytes);
+  if (parsed && isDecodableDump(parsed) && parsed.byteCount >= PROGRAM_BYTE_COUNT) {
+    return parsed.bytes.slice(0, PROGRAM_BYTE_COUNT);
+  }
+  return undefined;
+}
+
+/** Turns a patch/program name into something safe to use as a file name. */
+function safeFileName(name, fallback) {
+  return (name || fallback).trim().replace(/[^\w.-]+/g, "_") || fallback;
+}
+
+async function savePodProgram() {
+  const dump = currentPodDumpMessage();
+  if (!dump) {
+    status("No program loaded yet - click one in the list, or wait for the POD to answer.", true);
+    return;
+  }
+  const result = await window.fileAPI.saveFile({
+    defaultPath: `${safeFileName(device.currentProgramName, "program")}.syx`,
+    data: dump,
+    binary: true,
+    filters: POD_PATCH_FILTERS,
+  });
+  if (!result.canceled) status(`Saved to ${result.filePath}`);
+}
+
+async function loadPodProgram() {
+  const result = await window.fileAPI.openFile({ binary: true, filters: POD_PATCH_FILTERS });
+  if (result.canceled) return;
+  const bytes = podProgramFromFileData(result.data);
+  if (!bytes) {
+    status("That file is not a Bass POD Pro program dump.", true);
+    return;
+  }
+  // The adapter fires programLoaded, which repaints the panel and the name box.
+  const ok = await device.uploadEditBuffer(bytes);
+  status(ok ? `Loaded ${result.filePath} into the POD's edit buffer.` : "Could not send the program to the POD.", !ok);
+}
+
+async function backupPodPrograms(dirResult) {
+  status("Backing up all programs…");
+  // One all-programs dump carries every name and every byte; per-slot reads
+  // would work too but take 36 round trips for the same data.
+  const reply = await device.requestProgramNames();
+  const programs = reply ?? (device.programs.length > 0 ? device.programs : undefined);
+  if (!programs || programs.length === 0) {
+    status("The POD didn't send its program list - check that its MIDI channel matches the app's.", true);
+    return;
+  }
+  const blobs = device.storedProgramBytes;
+  const version = podProgramVersion();
+  let saved = 0;
+  for (let i = 0; i < programs.length; i++) {
+    const bytes = blobs[i];
+    if (!bytes) continue;
+    status(`Backing up [${i + 1}/${programs.length}]…`);
+    const program = programs[i];
+    await window.fileAPI.writeFileInDir({
+      dirPath: dirResult.dirPath,
+      fileName: `${safeFileName(program.label, String(i))}_${safeFileName(program.name, `program_${i}`)}.syx`,
+      data: buildProgramDump(i, bytes, version),
+      binary: true,
+    });
+    saved++;
+  }
+  if (saved > 0) status(`Backed up ${saved} programs to ${dirResult.dirPath}`);
+  else status("No programs to back up.", true);
+}
+
+async function restorePodProgramToSlot(slot) {
+  const result = await window.fileAPI.openFile({ binary: true, filters: POD_PATCH_FILTERS });
+  if (result.canceled) return;
+  const bytes = podProgramFromFileData(result.data);
+  if (!bytes) {
+    status("That file is not a Bass POD Pro program dump.", true);
+    return;
+  }
+  const label = device.programLabelFor(device.programChangeFor(slot)) ?? `program ${slot + 1}`;
+  status(`Restoring to ${label}…`);
+  const stored = await device.uploadProgramToSlot(slot, bytes);
+  if (!stored) {
+    status(`Failed to restore to ${label}.`, true);
+    return;
+  }
+  // Show it as well as store it, the same way the Zoom side does.
+  await device.uploadEditBuffer(bytes, { keepActiveProgram: true });
+  device.activeProgramNumber = slot;
+  status(`Restored to ${label}.`);
+}
+
+/**
+ * Renaming on the POD: the name lives in bytes 64-79 of the program, so it can
+ * only be sent as a program dump - control changes cannot carry it. The new
+ * name is written into the copy of the program the adapter holds, then the whole
+ * program is pushed back: to the slot it belongs to (so the rename survives
+ * re-selecting it) and to the edit buffer (so the POD shows it now).
+ */
+async function renamePodProgram() {
+  if (!device?.isOpen || !device.currentProgramBytes) return;
+  device.renameCurrentProgram(els.patchName.value);
+  const name = device.currentProgramName;
+  const slot = device.activeProgramNumber;
+  const keepSlot = slot !== null && slot !== undefined;
+  if (keepSlot) await device.uploadProgramToSlot(slot, device.currentProgramBytes);
+  await device.uploadEditBuffer(device.currentProgramBytes, { keepActiveProgram: keepSlot });
+  if (keepSlot) {
+    const label = device.programLabelFor(device.programChangeFor(slot)) ?? `program ${slot + 1}`;
+    status(`Renamed ${label} to "${name}".`);
+  } else {
+    status(`Renamed the edit buffer to "${name}" - pick a program slot and use Restore to Slot to store it.`);
+  }
+}
+
 async function savePatch() {
+  if (profile?.layout === "fixed-panel") return savePodProgram();
   if (!device?.currentPatch) return;
   const data = patchToBytes(device.currentPatch);
   if (!data) { status("Could not serialize this patch.", true); return; }
-  const name = (device.currentPatch.name || "patch").trim().replace(/[^\w.-]+/g, "_");
+  const name = safeFileName(device.currentPatch.name, "patch");
   const result = await window.fileAPI.saveFile({
     defaultPath: `${name}.zpatch`,
     data,
@@ -1045,6 +1221,7 @@ async function savePatch() {
 
 async function loadPatch() {
   if (!device) return;
+  if (profile?.layout === "fixed-panel") return loadPodProgram();
   const result = await window.fileAPI.openFile({
     binary: true,
     filters: [{ name: "Zoom Patch", extensions: ["zpatch"] }],
@@ -1065,6 +1242,15 @@ async function backupAll() {
   const dirResult = await window.fileAPI.openDirectory();
   if (dirResult.canceled) return;
 
+  if (profile?.layout === "fixed-panel") {
+    try {
+      await backupPodPrograms(dirResult);
+    } catch (e) {
+      status("Backup failed: " + e.message, true);
+    }
+    return;
+  }
+
   status("Backing up all patches…");
   try {
     await device.updatePatchListFromPedal();
@@ -1075,7 +1261,7 @@ async function backupAll() {
       if (!patch) continue;
       const data = patchToBytes(patch);
       if (!data) continue;
-      const name = (patch.name || `patch_${i}`).trim().replace(/[^\w.-]+/g, "_");
+      const name = safeFileName(patch.name, `patch_${i}`);
       await window.fileAPI.writeFileInDir({
         dirPath: dirResult.dirPath,
         fileName: `${String(i).padStart(2, "0")}_${name}.zpatch`,
@@ -1091,6 +1277,14 @@ async function backupAll() {
 
 async function restoreToSlot() {
   if (!device || selectedMemorySlot === null) return;
+  if (profile?.layout === "fixed-panel") {
+    try {
+      await restorePodProgramToSlot(selectedMemorySlot);
+    } catch (e) {
+      status("Could not restore program: " + e.message, true);
+    }
+    return;
+  }
   const result = await window.fileAPI.openFile({
     binary: true,
     filters: [{ name: "Zoom Patch", extensions: ["zpatch"] }],
@@ -1134,7 +1328,11 @@ els.btnBackup.addEventListener("click", backupAll);
 // Set up the chain as a drop zone for the effect library
 setupChainDropZone();
 
-els.patchName.addEventListener("change", () => {
+els.patchName.addEventListener("change", async () => {
+  if (profile?.layout === "fixed-panel") {
+    await renamePodProgram();
+    return;
+  }
   if (!device?.currentPatch) return;
   device.currentPatch.name = els.patchName.value;
   // Name edits are sent character-by-character on real hardware (see the

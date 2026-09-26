@@ -222,9 +222,25 @@ against the same document they came from.
 
 ## Packaging as a real installable app
 
-`npm run dist` (via `electron-builder`, already in `devDependencies`)
-builds an AppImage on Linux per the `build` config in `package.json`.
-Add `mac`/`win` targets there if you need other platforms.
+`npm run icons` regenerates `assets/icon.{png,ico,icns}` (rack-unit
+faceplate in the app's own brass-on-charcoal theme; needs Pillow -
+`pip install pillow` - and is checked in, so you only re-run it to change
+the artwork).
+
+```bash
+npm run pack        # unpacked directory build, quick sanity check
+npm run dist:linux  # Signal-Chain-<version>-linux.AppImage in dist/
+npm run dist:win    # NSIS installer .exe in dist/ (run on Windows)
+npm run dist        # both targets (only works where both toolchains exist)
+```
+
+Linux builds run anywhere, including this container. **Windows builds must
+run on Windows** (or the `package-win` GitHub Actions job): electron-builder
+needs Wine to build an NSIS installer from Linux, and Wine is not installed
+here, so `dist:win` on Linux fails by design - push and let CI make the
+`.exe`. No code signing is configured, so Windows SmartScreen will warn on
+first launch; that goes away only once you buy a certificate and wire its
+`CSC_*` secrets into `.github/workflows/build.yml`.
 
 ## Screen shots
 <img width="1280" height="830" alt="image" src="https://github.com/user-attachments/assets/065c01fc-9e50-417a-95f1-ad5252c607db" />

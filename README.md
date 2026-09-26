@@ -6,11 +6,6 @@ alternative interface to [zoom-explorer](https://github.com/thammer/zoom-explore
 underlying protocol/patch logic under the MIT license. See
 `THIRD_PARTY_NOTICES.md` for the attribution details.
 
-If you just want a working patch manager today, use sym.bios.is - it's
-tested on real hardware across the whole Plus line and actively
-maintained. This project is for anyone who specifically wants a native
-desktop app with a different interface.
-
 It also drives the **Line 6 Bass POD Pro**, which is a different kind of
 device entirely - see [Line 6 Bass POD Pro](#line-6-bass-pod-pro) below.
 
@@ -33,8 +28,7 @@ npm start
 ```
 
 Requires Node.js (for Electron itself, not for talking to the pedal -
-all MIDI happens through the renderer's Web MIDI API, same as
-sym.bios.is in a browser).
+all MIDI happens through the renderer's Web MIDI API).
 
 ## Status - what works and what doesn't yet
 

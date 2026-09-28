@@ -168,6 +168,9 @@ async function loadEffectMapFor(file, modelNumber) {
   }
   try {
     const res = await fetch(file);
+    if (!res.ok) {
+      throw new Error(`Could not load ${file} (HTTP ${res.status})`);
+    }
     effectMap = await res.json();
   } catch (e) {
     status("Could not load effect map: " + e.message, true);
@@ -903,7 +906,7 @@ function updateKnobDisplay(paramNumber, value) {
 // --- Fixed-panel rendering (Bass POD Pro) ----------------------------------
 //
 // Unlike the Zoom chain, this panel is data-driven: every control, range and
-// value name comes from the device's profile JSON (renderer/data/), so adding
+// value name comes from the device's profile JSON (shared/data/), so adding
 // another fixed-panel device means writing a new JSON file plus a protocol
 // adapter, not new UI code.
 
@@ -1148,16 +1151,27 @@ async function backupPodPrograms(dirResult) {
     if (!bytes) continue;
     status(`Backing up [${i + 1}/${programs.length}]…`);
     const program = programs[i];
-    await window.fileAPI.writeFileInDir({
-      dirPath: dirResult.dirPath,
-      fileName: `${safeFileName(program.label, String(i))}_${safeFileName(program.name, `program_${i}`)}.syx`,
-      data: buildProgramDump(i, bytes, version),
-      binary: true,
-    });
+    const fileName = `${safeFileName(program.label, String(i))}_${safeFileName(program.name, `program_${i}`)}.syx`;
+    const data = buildProgramDump(i, bytes, version);
+    // dirResult is null where there is no folder picker (Firefox/Safari) -
+    // download each program instead so backup still works there.
+    if (dirResult) {
+      await window.fileAPI.writeFileInDir({
+        dirPath: dirResult.dirPath,
+        fileName,
+        data,
+        binary: true,
+      });
+    } else {
+      await window.fileAPI.saveFile({ defaultPath: fileName, data, binary: true });
+    }
     saved++;
   }
-  if (saved > 0) status(`Backed up ${saved} programs to ${dirResult.dirPath}`);
-  else status("No programs to back up.", true);
+  if (saved > 0) {
+    status(dirResult
+      ? `Backed up ${saved} programs to ${dirResult.dirPath}`
+      : `Downloaded ${saved} programs - check your downloads folder.`);
+  } else status("No programs to back up.", true);
 }
 
 async function restorePodProgramToSlot(slot) {
@@ -1239,12 +1253,15 @@ async function loadPatch() {
 
 async function backupAll() {
   if (!device) return;
+  // Browsers without the File System Access API (Firefox/Safari) have no
+  // folder picker - web/file-api.js reports openDirectory as canceled there.
+  // Fall back to downloading the files one by one instead of failing.
   const dirResult = await window.fileAPI.openDirectory();
-  if (dirResult.canceled) return;
+  const useDir = !dirResult.canceled;
 
   if (profile?.layout === "fixed-panel") {
     try {
-      await backupPodPrograms(dirResult);
+      await backupPodPrograms(useDir ? dirResult : null);
     } catch (e) {
       status("Backup failed: " + e.message, true);
     }
@@ -1262,14 +1279,21 @@ async function backupAll() {
       const data = patchToBytes(patch);
       if (!data) continue;
       const name = safeFileName(patch.name, `patch_${i}`);
-      await window.fileAPI.writeFileInDir({
-        dirPath: dirResult.dirPath,
-        fileName: `${String(i).padStart(2, "0")}_${name}.zpatch`,
-        data,
-        binary: true,
-      });
+      const fileName = `${String(i).padStart(2, "0")}_${name}.zpatch`;
+      if (useDir) {
+        await window.fileAPI.writeFileInDir({
+          dirPath: dirResult.dirPath,
+          fileName,
+          data,
+          binary: true,
+        });
+      } else {
+        await window.fileAPI.saveFile({ defaultPath: fileName, data, binary: true });
+      }
     }
-    status(`Backed up ${patches.length} patches to ${dirResult.dirPath}`);
+    status(useDir
+      ? `Backed up ${patches.length} patches to ${dirResult.dirPath}`
+      : `Downloaded ${patches.length} patches - check your downloads folder.`);
   } catch (e) {
     status("Backup failed: " + e.message, true);
   }

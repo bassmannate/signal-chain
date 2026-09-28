@@ -6,9 +6,20 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,6 +28,51 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  web-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # No MIDI hardware and no browser here - this only proves the static
+      # server answers every route the web entry needs (page, app, styles,
+      # file backend, profile JSON). Real MIDI testing needs a human.
+      - run: |
+          python3 web/serve.py &
+          SRV=$!
+          trap "kill $SRV" EXIT
+          sleep 1
+          for route in index.html web/index.html web/file-api.js shared/app.js shared/styles.css shared/data/bass-pod-pro.json shared/data/zoom-effect-mappings-ms50gp.json; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/$route")
+            if [ "$code" != "200" ]; then echo "FAIL: $route -> $code"; exit 1; fi
+          done
+          echo "web smoke OK"
+
+  # Deploys ONLY web/ + shared/ (+ the root redirect) to GitHub Pages - the
+  # Electron shell, node_modules, tests and mapping docs stay out of the
+  # public site. Staged into a clean directory so the page layout (web/ and
+  # shared/ side by side, index.html on top) matches what serve.py serves.
+  deploy-pages:
+    needs: web-smoke
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p site
+          cp index.html site/
+          cp -r web shared site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
   package-linux:
     needs: test

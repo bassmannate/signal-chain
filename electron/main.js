@@ -31,7 +31,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  mainWindow.loadFile(path.join(__dirname, "..", "shared", "index.html"));
 
   // A totally empty menu (the previous version of this file just called
   // Menu.setApplicationMenu(null)) also silently removes the keyboard

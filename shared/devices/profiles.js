@@ -6,7 +6,13 @@ import { BassPodProDevice } from "./BassPodProDevice.js";
 // THIRD_PARTY_NOTICES.md and the zoomplus/ project's README for how these
 // were found.
 //
-// MS-70CDR+'s mapping file is already bundled (renderer/data/) and its
+// Anchored to this module (shared/devices/) via import.meta.url, NOT to the
+// page: fetch() resolves page-relative URLs, and the two shells load from
+// different pages (shared/index.html vs web/index.html), so a bare
+// "data/..." path 404s in the browser build and every effect falls back to
+// generic Effect # / Param # labels. Module-anchored URLs work in both.
+//
+// MS-70CDR+'s mapping file is already bundled (shared/data/) and its
 // effect-icon category table is already built (effect-icons.js) - both
 // verified against the real data (150/150 effects categorized cleanly).
 // The only missing piece is its model number byte, which can only come
@@ -14,9 +20,9 @@ import { BassPodProDevice } from "./BassPodProDevice.js";
 // not something in Zoom's published manuals). Once known, add it both
 // here and in effect-icons.js's PREFIX_CATEGORY - that's the entire fix.
 export const MODEL_TO_MAPPING_FILE = {
-    0x23: "data/zoom-effect-mappings-ms50gp.json",
-    0x27: "data/zoom-effect-mappings-ms60bp.json",
-    // 0x??: "data/zoom-effect-mappings-ms70cdrp.json", // MS-70CDR+ - see above
+    0x23: new URL("../data/zoom-effect-mappings-ms50gp.json", import.meta.url).href,
+    0x27: new URL("../data/zoom-effect-mappings-ms60bp.json", import.meta.url).href,
+    // 0x??: new URL("../data/zoom-effect-mappings-ms70cdrp.json", import.meta.url).href, // MS-70CDR+ - see above
 };
 
 export const ZOOM_MANUFACTURER_ID = 0x52;
@@ -24,7 +30,7 @@ export const ZOOM_MANUFACTURER_ID = 0x52;
 // Line 6's three-byte SysEx manufacturer ID (0x00 0x01 0x0C - "Fast Forward",
 // now Yamaha). miditools.js already knows this ID, and already parses the
 // three-byte-manufacturer identity reply that the POD sends, so nothing in
-// renderer/lib/ needs changing to find this device.
+// shared/lib/ needs changing to find this device.
 export const LINE6_MANUFACTURER_ID = [0x00, 0x01, 0x0c];
 
 // Family code -> what we call the device. The Bass POD Pro reports family
@@ -90,10 +96,10 @@ export const PROFILES = [
         layout: "fixed-panel",
         match: isBassPodProIdentity,
         // The POD's own identity reply carries no product name, and
-        // renderer/lib/miditools.js is vendored code we don't edit, so the
+        // shared/lib/miditools.js is vendored code we don't edit, so the
         // friendly name comes from here instead.
         deviceLabel: (description) => labelForLine6Family(description?.familyCode) || "Line 6 Bass POD Pro",
-        dataFile: "data/bass-pod-pro.json",
+        dataFile: new URL("../data/bass-pod-pro.json", import.meta.url).href,
         createDevice: (midi, description, profileData) => new BassPodProDevice(midi, description, profileData),
     },
 ];

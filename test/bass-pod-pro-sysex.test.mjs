@@ -1,5 +1,5 @@
 // Tests for the Bass POD Pro sys-ex program dump path: the byte-level codec in
-// renderer/devices/bassPodProSysex.js, and the adapter flow behind the patch
+// shared/devices/bassPodProSysex.js, and the adapter flow behind the patch
 // list (read the names, recall a program, read it back).
 //
 //   npm test
@@ -44,12 +44,12 @@ import {
   valueFromField,
   writeBitField,
   writePatchName,
-} from "../renderer/devices/bassPodProSysex.js";
-import { BassPodProDevice } from "../renderer/devices/BassPodProDevice.js";
-import { formatByBands } from "../renderer/ui/controls.js";
+} from "../shared/devices/bassPodProSysex.js";
+import { BassPodProDevice } from "../shared/devices/BassPodProDevice.js";
+import { formatByBands } from "../shared/ui/controls.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const profileData = JSON.parse(readFileSync(path.join(repoRoot, "renderer/data/bass-pod-pro.json"), "utf8"));
+const profileData = JSON.parse(readFileSync(path.join(repoRoot, "shared/data/bass-pod-pro.json"), "utf8"));
 const layout = profileData.sysexLayout;
 
 /** Every sysex message in a capture file, as arrays of byte values. */

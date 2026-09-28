@@ -1,6 +1,0 @@
-{
-  "name": "signal-chain-renderer",
-  "private": true,
-  "type": "module",
-  "description": "Renderer is loaded by Electron as browser ES modules (<script type=\"module\">), not by Node. This file exists so the Node test runner (test/*.test.mjs) resolves renderer/**/*.js as ES modules instead of CommonJS. The app itself does not read it, and the CommonJS main process (main.js/preload.js in the repo root) is unaffected because this package.json only governs the renderer/ subtree."
-}

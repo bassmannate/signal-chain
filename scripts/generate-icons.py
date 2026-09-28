@@ -6,7 +6,7 @@ SIZE = 1024
 OUTDIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 os.makedirs(OUTDIR, exist_ok=True)
 
-# Rack-unit faceplate look matching renderer/styles.css warm-on-charcoal theme.
+# Rack-unit faceplate look matching shared/styles.css warm-on-charcoal theme.
 BG = (23, 24, 26, 255)        # --bg-deep #17181A
 RAIL = (38, 40, 43, 255)      # --panel-raised #26282B
 LINE = (52, 55, 58, 255)      # --line #34373A

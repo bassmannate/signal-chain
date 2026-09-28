@@ -1,4 +1,4 @@
-// Widget tests for renderer/ui/controls.js - the knobs, drop-downs and
+// Widget tests for shared/ui/controls.js - the knobs, drop-downs and
 // switches shared by the Zoom chain view and the Bass POD Pro fixed panel.
 //
 //   node --test test/
@@ -19,7 +19,7 @@ import {
   clamp,
   formatByBands,
   setKnobVisual,
-} from "../renderer/ui/controls.js";
+} from "../shared/ui/controls.js";
 
 class FakeClassList {
   constructor() { this.names = new Set(); }

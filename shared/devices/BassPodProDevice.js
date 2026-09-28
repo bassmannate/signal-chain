@@ -52,7 +52,7 @@ import {
 // Control numbers, ranges and value names come from
 // mapping/bass_pod_pro_mapping.ods, the 80-byte program layout from
 // mapping/Bass POD Pro Sysex - English .pdf, and both are carried in the
-// device's profile JSON (renderer/data/bass-pod-pro.json) rather than being
+// device's profile JSON (shared/data/bass-pod-pro.json) rather than being
 // hard-coded here.
 // ---------------------------------------------------------------------------
 
@@ -73,7 +73,7 @@ const ALL_PROGRAMS_DUMP_TIMEOUT_MS = 6000;
 // A long sys-ex arrives in pieces rather than as one message: a Bass POD Pro on
 // firmware 1.40 delivers the 36-program dump as 23 chunks of 256 bytes, where
 // only the first starts with F0 and only the last ends with F7 (captured in
-// test/fixtures/bass-pod-pro-all-programs.txt). Web MIDI hands the renderer the
+// test/fixtures/bass-pod-pro-all-programs.txt). Web MIDI hands the app the
 // same pieces, so they are stitched back together before anything is parsed.
 // The limit just stops a dump that never finishes from being buffered forever.
 const SYSEX_BUFFER_LIMIT = 64 * 1024;
@@ -83,9 +83,9 @@ export class BassPodProDevice {
     static PROGRAM_CHANGE_TUNER = 37;
 
     /**
-     * @param midi A MIDIProxy implementation (renderer: MIDIProxyForWebMIDIAPI)
+     * @param midi A MIDIProxy implementation (MIDIProxyForWebMIDIAPI)
      * @param midiDevice The MIDIDeviceDescription this device was identified as
-     * @param profileData Parsed contents of renderer/data/bass-pod-pro.json
+     * @param profileData Parsed contents of shared/data/bass-pod-pro.json
      * @param options { channel, now, dumpTimeoutMs }
      */
     constructor(midi, midiDevice, profileData, options = {}) {

@@ -1,16 +1,16 @@
 # Third-party code
 
-`renderer/lib/*.js` and `renderer/data/zoom-effect-mappings-*.json` are
+`shared/lib/*.js` and `shared/data/zoom-effect-mappings-*.json` are
 copied, unmodified, from Thomas Hammer's
 [zoom-explorer](https://github.com/thammer/zoom-explorer) project
-(MIT licensed - see `renderer/lib/LICENSE`). They provide the MIDI
+(MIT licensed - see `shared/lib/LICENSE`). They provide the MIDI
 sysex protocol handling, device discovery, and per-effect parameter data
 for the Zoom MS Plus pedal series.
 
-Everything else in this repository - the Electron shell (`main.js`,
-`preload.js`), the UI (`renderer/index.html`, `renderer/styles.css`,
-`renderer/app.js`), and the visual design - is original, written for
-this project.
+Everything else in this repository - the Electron shell
+(`electron/main.js`, `electron/preload.js`), the web shell (`web/`),
+the UI (`shared/index.html`, `shared/styles.css`, `shared/app.js`),
+and the visual design - is original, written for this project.
 
 This project is not affiliated with Thomas Hammer, sym.bios.is, or Zoom
 Corporation. It exists to provide an alternative, native-desktop

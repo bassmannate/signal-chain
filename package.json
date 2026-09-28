@@ -2,9 +2,10 @@
   "name": "signal-chain",
   "version": "0.2.0",
   "description": "A native desktop patch editor for the Zoom MS Plus pedal series and Bass Pod/Pro",
-  "main": "main.js",
+  "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
+    "web": "python3 web/serve.py",
     "test": "node --test test/",
     "icons": "python3 scripts/generate-icons.py",
     "pack": "electron-builder --dir",
@@ -30,14 +31,13 @@
       "output": "dist"
     },
     "files": [
-      "main.js",
-      "preload.js",
-      "renderer/**/*",
+      "electron/**/*",
+      "shared/**/*",
       "LICENSE.md",
       "THIRD_PARTY_NOTICES.md"
     ],
     "extraMetadata": {
-      "main": "main.js"
+      "main": "electron/main.js"
     },
     "linux": {
       "target": ["AppImage"],

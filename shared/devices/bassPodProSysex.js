@@ -26,7 +26,7 @@
 //
 // Which byte holds which parameter - and how its bit field maps to a
 // control-change value - is data, not code: it lives in
-// renderer/data/bass-pod-pro.json under "sysexLayout".
+// shared/data/bass-pod-pro.json under "sysexLayout".
 
 export const LINE6_MANUFACTURER_ID = [0x00, 0x01, 0x0c];
 export const BASS_POD_PRO_FAMILY_ID = 0x02;
@@ -183,7 +183,7 @@ export function storedValueFromCc(ccValue, scale = 1) {
  * Only messages this codec fully understands are returned: a Line 6 message
  * whose family or opcode doesn't match comes back undefined so callers can
  * ignore it. (The universal identity reply the POD also sends is handled by
- * renderer/lib/miditools.js, not here.)
+ * shared/lib/miditools.js, not here.)
  *
  * @param data Raw MIDI message
  * @returns {{ opcode, type, programNumber, version, byteCount, nibbles, bytes }|undefined}
@@ -385,7 +385,7 @@ export function readPatchName(programBytes, layout) {
  * for - exactly what it already does with live control changes.
  *
  * @param programBytes 80 bytes of program data
- * @param layout "sysexLayout" from renderer/data/bass-pod-pro.json
+ * @param layout "sysexLayout" from shared/data/bass-pod-pro.json
  * @returns Map of control-change number -> value
  */
 export function readProgramValues(programBytes, layout) {

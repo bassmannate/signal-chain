@@ -24,11 +24,16 @@ panel shows is closer to the pedal's own front panel.
 
 ```bash
 npm install
-npm start
+npm start        # desktop app (Electron)
+npm run web      # browser build: http://localhost:8000/web/index.html
 ```
 
-Requires Node.js (for Electron itself, not for talking to the pedal -
-all MIDI happens through the renderer's Web MIDI API).
+`npm start` needs Electron; `npm run web` needs only Python 3 and a
+Chromium browser (Chrome/Edge - WebMIDI with sysex needs a secure
+context, so localhost for local use or HTTPS when hosted, and Firefox /
+Safari cannot do MIDI at all). Requires Node.js (for Electron itself, not
+for talking to the pedal - all MIDI happens through the Web MIDI API, same as
+sym.bios.is in a browser).
 
 ## Status - what works and what doesn't yet
 
@@ -48,7 +53,7 @@ all MIDI happens through the renderer's Web MIDI API).
 - ⚠️ MS-70CDR+ effect names/parameter ranges aren't wired in yet - only
   MS-50G+ (model `0x23`) and MS-60B+ (model `0x27`) are mapped in
   `app.js`'s `MODEL_TO_MAPPING_FILE`. The effect mapping JSON for
-  MS-70CDR+ is already bundled in `renderer/data/` though - it just
+  MS-70CDR+ is already bundled in `shared/data/` though - it just
   needs that pedal's model number confirmed and added.
 - ❌ Patch renaming isn't sent to the pedal live yet (real hardware sends
   name edits character-by-character; this app lets you edit the name box
@@ -170,7 +175,7 @@ app stitches them back together before parsing (see `_handleSysex()`).
 - More identifiable effect icons. Just about all of them are completely generic.
 - Bass POD Pro: check the write path against real hardware. Sending a program
   dump back to the POD (`buildProgramDump` / `buildEditBufferDump` /
-  `buildAllProgramsDump` in `renderer/devices/bassPodProSysex.js`, nibble-encoded
+  `buildAllProgramsDump` in `shared/devices/bassPodProSysex.js`, nibble-encoded
   with the version byte the document asks for) is what Save/Load/Backup/Restore
   and renaming use now, and the byte layouts are pinned by tests - but no POD has
   been plugged in to confirm it accepts an upload, or what it does with one.
@@ -196,15 +201,15 @@ npm test        # same as: node --test test/
 ```
 
 No MIDI hardware, no Electron and no display needed. The vendored protocol
-code in `renderer/lib/` is plain ES modules, so `test/bass-pod-pro.test.mjs`
+code in `shared/lib/` is plain ES modules, so `test/bass-pod-pro.test.mjs`
 drives the real identity-reply parser and the real CC adapter through a fake
 MIDI proxy and asserts the exact bytes on the wire,
 `test/bass-pod-pro-sysex.test.mjs` does the same for the dump codec, the
 patch-list flow and the write side - renaming a program, the exact upload
 messages Save/Load/Backup/Restore send, and the bytes Backup All would write -
 and `test/controls.test.mjs` drives the panel widgets through
-a minimal DOM stub. `renderer/package.json` exists only so the Node test
-runner treats `renderer/**/*.js` as ES modules - the app itself never reads it.
+a minimal DOM stub. `shared/package.json` exists only so the Node test
+runner treats `shared/**/*.js` as ES modules - the app itself never reads it.
 
 The dump tests run against real captures in `test/fixtures/`: a Bass POD Pro on
 firmware 1.40 answering an identity request and an edit-buffer request (while a
@@ -245,10 +250,17 @@ first launch; that goes away only once you buy a certificate and wire its
 ## Project layout
 
 ```
-main.js            Electron main process (window, MIDI permission, file IPC)
-preload.js          contextBridge - the only path from renderer to filesystem
-renderer/
-  index.html
+electron/
+  main.js            Electron main process (window, MIDI permission, file IPC)
+  preload.js         contextBridge - the only path from the Electron UI to files
+web/
+  index.html         browser entry - same DOM as shared/index.html, plus file-api.js
+  file-api.js        window.fileAPI via browser APIs (download / file picker /
+                     File System Access); Backup All falls back to downloads
+                     where there is no folder picker (Firefox/Safari)
+  serve.py           zero-dependency static server (`npm run web`)
+shared/              UI + protocol code used by BOTH shells, unchanged
+  index.html         Electron entry (no file-api.js - preload provides fileAPI)
   styles.css         original design
   app.js             UI orchestration - picks a device, builds its view
   lib/                zoom-explorer core (MIT, unmodified) - protocol, device

@@ -1,10 +1,10 @@
 // Tests for the Line 6 Bass POD Pro support: identity discovery, the control
-// map in renderer/data/bass-pod-pro.json, and the CC protocol adapter.
+// map in shared/data/bass-pod-pro.json, and the CC protocol adapter.
 //
 //   node --test test/
 //
 // No MIDI hardware, no Electron and no display needed: the vendored protocol
-// modules in renderer/lib/ are plain ES modules, so a fake MIDI proxy is
+// modules in shared/lib/ are plain ES modules, so a fake MIDI proxy is
 // enough to cover everything the app does to the wire.
 
 import test from "node:test";
@@ -13,12 +13,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { getMIDIDeviceList } from "../renderer/lib/miditools.js";
-import { BassPodProDevice, buildControlLookup } from "../renderer/devices/BassPodProDevice.js";
-import { findProfileFor, isBassPodProIdentity } from "../renderer/devices/profiles.js";
+import { getMIDIDeviceList } from "../shared/lib/miditools.js";
+import { BassPodProDevice, buildControlLookup } from "../shared/devices/BassPodProDevice.js";
+import { findProfileFor, isBassPodProIdentity } from "../shared/devices/profiles.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const profileData = JSON.parse(readFileSync(path.join(repoRoot, "renderer/data/bass-pod-pro.json"), "utf8"));
+const profileData = JSON.parse(readFileSync(path.join(repoRoot, "shared/data/bass-pod-pro.json"), "utf8"));
 const lookup = buildControlLookup(profileData);
 
 // The universal identity request the app sends, and the reply a Bass POD Pro
@@ -84,7 +84,8 @@ test("identity reply: the POD is discovered and matched to the fixed-panel profi
   const found = findProfileFor(descriptions);
   assert.equal(found.profile.id, "bass-pod-pro");
   assert.equal(found.profile.layout, "fixed-panel", "the POD needs the fixed-panel view, not the chain");
-  assert.equal(found.profile.dataFile, "data/bass-pod-pro.json");
+  assert.ok(found.profile.dataFile.endsWith("/shared/data/bass-pod-pro.json"),
+    `module-anchored data URL, got ${found.profile.dataFile}`);
   assert.equal(found.profile.deviceLabel(description), "Line 6 Bass POD Pro");
 });
 

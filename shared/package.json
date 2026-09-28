@@ -1,0 +1,6 @@
+{
+  "name": "signal-chain-shared",
+  "private": true,
+  "type": "module",
+  "description": "Browser ES modules shared by the Electron shell (electron/) and the web build (web/). This file exists so the Node test runner (test/*.test.mjs) resolves shared/**/*.js as ES modules instead of CommonJS. The app itself does not read it, and the CommonJS Electron main process (electron/main.js, electron/preload.js) is unaffected because this package.json only governs the shared/ subtree."
+}

@@ -18,6 +18,22 @@ import {
   setKnobVisual,
   wireKnobDrag,
 } from "./ui/controls.js";
+import {
+  DEVICE_KIND_POD,
+  DEVICE_KIND_ZOOM,
+  LIBRARY_EXTENSION,
+  addToStash,
+  createLibrary,
+  entryFromBytes,
+  entryToBytes,
+  hasPendingWork,
+  hasStashableBytes,
+  labelForDeviceKind,
+  parseLibrary,
+  pendingWorkSummary,
+  serializeLibrary,
+  suggestedLibraryFileName,
+} from "./patchLibrary.js";
 
 // Which device we're talking to is decided entirely by devices/profiles.js:
 // it knows the identity signatures, which view layout each device wants
@@ -34,6 +50,19 @@ let selectedSlot = null;
 let selectedMemorySlot = null;
 const panelControls = new Map(); // ccNumber -> control handle from ui/controls.js
 let activeProgramNumber = null; // which POD program (0 = 1A) the panel is showing
+
+// --- Patch librarian ------------------------------------------------------
+// A free-length list of patches for ONE device family (never mixed), plus a
+// memory-only stash for patches displaced from device slots by library drops.
+// The stash is wiped when the library closes; dirty tracks anything needing
+// a file Save (added/kept/removed/renamed rows).
+const DRAG_DEVICE_PATCH = "application/x-device-patch";
+const DRAG_LIBRARY_PATCH = "application/x-library-patch";
+let patchLib = null; // { app, libraryVersion, deviceKind, patches: [] } | null
+let patchLibFilePath = null; // last opened/saved path (Electron may reuse it)
+let patchLibFileName = null; // display name (web has no path)
+let patchLibDirty = false;
+let patchStash = []; // entries displaced from the device, memory-only
 
 const el = (id) => document.getElementById(id);
 const els = {
@@ -62,11 +91,22 @@ const els = {
   crcIndicator: el("crc-indicator"),
   library: el("library"),
   libraryContent: el("library-content"),
+  patchLibrary: el("patch-library"),
+  patchLibraryName: el("patch-library-name"),
+  patchLibraryList: el("patch-library-list"),
+  patchStash: el("patch-stash"),
+  patchStashList: el("patch-stash-list"),
+  btnLibOpen: el("btn-lib-open"),
+  btnLibSave: el("btn-lib-save"),
+  btnLibSaveAs: el("btn-lib-save-as"),
+  btnLibClose: el("btn-lib-close"),
+  btnLibNew: el("btn-lib-new"),
   panelWrap: el("panel-wrap"),
   panelModel: el("panel-model"),
   panelProgram: el("panel-program"),
   panelNote: el("panel-note"),
   panelGroups: el("panel-groups"),
+  panelHead: el("panel-head"),
 };
 
 function escapeHtml(s) {
@@ -125,6 +165,9 @@ function setConnected(open, name) {
   els.sidebarHeader.textContent = isPanel ? "Programs" : "Patches";
 
   if (panelControls.size > 0 && !open) resetPanel();
+
+  // The librarian panel only makes sense with a device attached.
+  updateLibrarianVisibility();
 
   if (!open) {
     els.patchNumber.textContent = "--";
@@ -209,6 +252,12 @@ async function connect() {
     return;
   }
   const { profile: matchedProfile, description: desc } = found;
+
+  // Reconnecting must not keep the old library open: libraries hold
+  // patches for one device family, and the stash may hold bytes from the
+  // previous device. Skip the discard warning here - Reconnect is an
+  // explicit "start over" action.
+  resetLibrarianForDevice();
 
   if (device) {
     try { await device.close(); } catch (e) { /* already closed, ignore */ }
@@ -299,6 +348,11 @@ function wireDeviceEvents(dev) {
   dev.addProgramLoadedListener((d, loaded) => applyProgramValues(loaded));
 }
 
+/** Device-kind guard for the librarian: one family per library file. */
+function deviceKindForLibrarian() {
+  return profile?.id === "bass-pod-pro" ? DEVICE_KIND_POD : profile?.id === "zoom-plus" ? DEVICE_KIND_ZOOM : null;
+}
+
 async function loadPatchList() {
   status("Loading patch list…");
   try {
@@ -317,9 +371,13 @@ function renderPatchList(patches) {
     if (selectedMemorySlot === i) {
       li.classList.add("active");
     }
+    li.draggable = true;
+    li.dataset.slot = String(i);
     li.innerHTML = `<span class="p-num">${String(i).padStart(2, "0")}</span>` +
       `<span class="p-name">${escapeHtml(patch?.name || "(empty)")}</span>`;
     li.addEventListener("click", () => selectPatchFromList(i, li));
+    wireDeviceSlotDrag(li, i);
+    wireSlotDropTarget(li, i);
     els.patchList.appendChild(li);
   });
 }
@@ -360,9 +418,13 @@ function renderProgramList(programs) {
   for (const program of programs) {
     const li = document.createElement("li");
     if (program.programNumber === activeProgramNumber) li.classList.add("active");
+    li.draggable = true;
+    li.dataset.slot = String(program.programNumber);
     li.innerHTML = `<span class="p-num">${escapeHtml(program.label ?? "??")}</span>` +
       `<span class="p-name">${escapeHtml(program.name || "(empty)")}</span>`;
     li.addEventListener("click", () => selectProgramFromList(program.programNumber));
+    wireDeviceSlotDrag(li, program.programNumber);
+    wireSlotDropTarget(li, program.programNumber);
     els.patchList.appendChild(li);
   }
 }
@@ -1009,6 +1071,467 @@ function buildPanelControl(control, data) {
   }
 }
 
+// --- Patch librarian ----------------------------------------------------------
+//
+// Free-length list of patches for one device family + memory-only stash for
+// patches displaced from device slots. Payloads are the devices' exact
+// bytes (Zoom blobs, raw 80-byte POD programs), so no conversion here can
+// lose data - this layer only moves bytes between slot reads, entries,
+// and the existing upload paths.
+
+function librarianReady() {
+  return Boolean(device?.isOpen && patchLib && deviceKindForLibrarian() === patchLib.deviceKind);
+}
+
+/** Display model for a slot: Zoom pedal name or POD label. */
+function modelForSlotHint() {
+  if (profile?.layout === "fixed-panel") return "Bass POD Pro";
+  return device?.deviceName ?? currentModelByte ?? "";
+}
+
+function updateLibrarianVisibility() {
+  if (!els.patchLibrary) return;
+  // Visible whenever a device is attached, even with no library open: the
+  // panel is also the drop target that creates one (see sendSlotToLibrary).
+  const show = Boolean(device?.isOpen);
+  els.patchLibrary.classList.toggle("hidden", !show);
+  if (show) renderPatchLibrary();
+}
+
+function slotHintMeta(entry) {
+  if (entry.slotHint === null || entry.slotHint === undefined) return entry.model || "";
+  const slot = profile?.layout === "fixed-panel" && device
+    ? (device.programLabelFor(device.programChangeFor(entry.slotHint)) ?? `slot ${entry.slotHint}`)
+    : `slot ${entry.slotHint}`;
+  return entry.model ? `${entry.model} · ${slot}` : slot;
+}
+
+function renderPatchLibrary() {
+  if (!els.patchStashList || !els.patchLibraryList) return;
+  els.patchStashList.innerHTML = "";
+  els.patchLibraryList.innerHTML = "";
+  if (!patchLib) {
+    // The panel stays visible with no library open so it can act as the drop
+    // target that creates one; say so instead of showing an empty box.
+    const hint = document.createElement("li");
+    hint.className = "lib-empty";
+    hint.textContent = "No library open. Use New or Open above, or drag a patch over from the device list.";
+    els.patchLibraryList.appendChild(hint);
+    renderLibraryHeader();
+    return;
+  }
+  for (const entry of patchStash) els.patchStashList.appendChild(makeLibraryRow(entry, { stashed: true }));
+  for (const entry of patchLib.patches) els.patchLibraryList.appendChild(makeLibraryRow(entry));
+  renderLibraryHeader();
+}
+
+function markLibraryDirty(dirty = true) {
+  patchLibDirty = dirty;
+  renderLibraryHeader();
+}
+
+function makeLibraryRow(entry, { stashed = false } = {}) {
+  const li = document.createElement("li");
+  li.className = "lib-row" + (stashed ? " stashed" : "");
+  li.draggable = true;
+  li.dataset.entryId = entry.id;
+  li.title = stashed ? "Displaced from the device - Keep saves it to the library" : "Drag to a device slot, or double-click to audition";
+  const name = document.createElement("span");
+  name.className = "p-name";
+  name.textContent = entry.name || "(untitled)";
+  const meta = document.createElement("span");
+  meta.className = "p-meta";
+  meta.textContent = slotHintMeta(entry);
+  li.append(name, meta);
+  if (stashed) {
+    const keep = document.createElement("button");
+    keep.className = "row-btn row-keep";
+    keep.textContent = "Keep";
+    keep.title = "Keep this patch in the library";
+    keep.addEventListener("click", (e) => { e.stopPropagation(); keepStashedEntry(entry.id); });
+    li.append(keep);
+  }
+  const del = document.createElement("button");
+  del.className = "row-btn";
+  del.textContent = "×";
+  del.title = stashed ? "Discard" : "Remove from library";
+  del.addEventListener("click", (e) => { e.stopPropagation(); stashed ? discardStashedEntry(entry.id) : removeLibraryEntry(entry.id); });
+  li.append(del);
+  li.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData(DRAG_LIBRARY_PATCH, JSON.stringify({ id: entry.id }));
+    e.dataTransfer.effectAllowed = "copy";
+  });
+  li.addEventListener("dblclick", () => auditionLibraryEntry(entry.id));
+  return li;
+}
+
+function removeLibraryEntry(id) {
+  if (!patchLib) return;
+  patchLib.patches = patchLib.patches.filter((e) => e.id !== id);
+  markLibraryDirty(true);
+  renderPatchLibrary();
+}
+
+function keepStashedEntry(id) {
+  const index = patchStash.findIndex((e) => e.id === id);
+  if (index < 0 || !patchLib) return;
+  const [entry] = patchStash.splice(index, 1);
+  patchLib.patches.push(entry);
+  markLibraryDirty(true);
+  renderPatchLibrary();
+  status(`Kept "${entry.name}" in the library. Save the library to keep it permanently.`);
+}
+
+function discardStashedEntry(id) {
+  patchStash = patchStash.filter((e) => e.id !== id);
+  renderPatchLibrary();
+  if (patchStash.length === 0 && !patchLibDirty) status("Stash cleared.");
+}
+
+function renderLibraryHeader() {
+  if (!els.patchLibraryName || !els.patchStash) return;
+  const name = patchLibFileName ?? "Untitled";
+  const dirtyMark = patchLibDirty ? " *" : "";
+  const kind = patchLib ? ` (${labelForDeviceKind(patchLib.deviceKind)})` : "";
+  els.patchLibraryName.textContent = patchLib ? `${name}${dirtyMark}${kind}` : "No library open";
+  els.btnLibSave.disabled = !patchLib;
+  els.btnLibSaveAs.disabled = !patchLib;
+  els.btnLibClose.disabled = !patchLib;
+  els.patchStash.classList.toggle("hidden", patchStash.length === 0);
+}
+
+/** Read a slot's bytes without disturbing the panel. */
+async function readSlotBytes(slot) {
+  if (profile?.layout === "fixed-panel") {
+    const cached = device.storedProgramBytes?.[slot];
+    if (cached) return new Uint8Array(cached);
+    const loaded = await device.downloadPatchFromMemorySlot(slot);
+    return loaded ? new Uint8Array(loaded) : undefined;
+  }
+  const fromList = device.patchList?.[slot];
+  if (fromList) return patchToBytes(fromList);
+  const patch = await device.downloadPatchFromMemorySlot(slot);
+  return patch ? patchToBytes(patch) : undefined;
+}
+
+function slotDisplayName(slot) {
+  if (profile?.layout === "fixed-panel" && device) {
+    return device.programLabelFor(device.programChangeFor(slot)) ?? `slot ${slot}`;
+  }
+  return `slot ${slot}`;
+}
+
+/** Name + model for stash/row labels, read from bytes (never the panel). */
+async function describeSlotBytes(slot, bytes) {
+  if (profile?.layout === "fixed-panel") {
+    const { readPatchName } = await import("./devices/bassPodProSysex.js");
+    return { name: readPatchName(bytes, profileData?.sysexLayout) || slotDisplayName(slot), model: "Bass POD Pro" };
+  }
+  const { ZoomPatch } = await import("./lib/ZoomPatch.js");
+  const patch = ZoomPatch.fromPatchData(bytes);
+  return { name: patch?.name || slotDisplayName(slot), model: modelForSlotHint() };
+}
+
+async function writeBytesToSlot(slot, bytes) {
+  if (profile?.layout === "fixed-panel") {
+    const stored = await device.uploadProgramToSlot(slot, bytes);
+    if (!stored) return false;
+    await device.uploadEditBuffer(bytes, { keepActiveProgram: true });
+    device.activeProgramNumber = slot;
+    activeProgramNumber = slot;
+    highlightActiveProgram();
+    return true;
+  }
+  const { ZoomPatch } = await import("./lib/ZoomPatch.js");
+  const patch = ZoomPatch.fromPatchData(bytes);
+  if (!patch) return false;
+  const success = await device.uploadPatchToMemorySlot(patch, slot);
+  if (!success) return false;
+  device.uploadPatchToCurrentPatch(patch);
+  selectedMemorySlot = slot;
+  updateRestoreButtonState();
+  const item = els.patchList.children[slot];
+  if (item) {
+    [...els.patchList.children].forEach((c) => c.classList.remove("active"));
+    item.classList.add("active");
+    item.querySelector(".p-name").textContent = patch.name || "(empty)";
+  }
+  return true;
+}
+
+async function auditionBytes(bytes) {
+  if (profile?.layout === "fixed-panel") {
+    return await device.uploadEditBuffer(bytes);
+  }
+  const { ZoomPatch } = await import("./lib/ZoomPatch.js");
+  const patch = ZoomPatch.fromPatchData(bytes);
+  if (!patch) return false;
+  device.uploadPatchToCurrentPatch(patch);
+  return true;
+}
+
+/** Library -> slot with overwrite protection: stash first, then write. */
+async function dropLibraryEntryOnSlot(entryId, slot) {
+  if (!librarianReady()) return;
+  const entry = patchLib.patches.find((e) => e.id === entryId)
+    ?? patchStash.find((e) => e.id === entryId);
+  if (!entry) return;
+  let bytes;
+  try {
+    bytes = entryToBytes(entry);
+  } catch (e) {
+    status(`"${entry.name}" is corrupt and cannot be sent to the device.`, true);
+    return;
+  }
+  status(`Reading ${slotDisplayName(slot)}…`);
+  const existing = await readSlotBytes(slot);
+  let stashed = false;
+  if (hasStashableBytes(existing)) {
+    const info = await describeSlotBytes(slot, existing);
+    addToStash(patchStash, entryFromBytes({ ...info, slotHint: slot, bytes: existing }));
+    stashed = true;
+  }
+  status(`Writing "${entry.name}" to ${slotDisplayName(slot)}…`);
+  const ok = await writeBytesToSlot(slot, bytes);
+  renderPatchLibrary();
+  const note = stashed ? " The previous patch was stashed." : "";
+  status(ok ? `"${entry.name}" is now in ${slotDisplayName(slot)}.${note}` : `Could not write to ${slotDisplayName(slot)}.`, !ok);
+}
+
+/** Device slot -> library: read the slot, append a row, mark dirty. */
+async function sendSlotToLibrary(slot) {
+  const kind = deviceKindForLibrarian();
+  if (!device?.isOpen || !kind) {
+    status("Connect a device before copying patches into a library.", true);
+    return;
+  }
+  // Dropping onto an empty panel is the natural way to start a library, so
+  // create one for the connected device rather than refusing the drop.
+  if (!patchLib) {
+    patchLib = createLibrary(kind);
+    patchLibFilePath = null;
+    patchLibFileName = null;
+    patchStash = [];
+    markLibraryDirty(true);
+    status(`Started a new ${labelForDeviceKind(kind)} library from the dropped patch.`);
+  }
+  if (patchLib.deviceKind !== kind) {
+    status(`This library holds ${labelForDeviceKind(patchLib.deviceKind)} patches, but a ${labelForDeviceKind(kind)} is connected.`, true);
+    return;
+  }
+  status(`Reading ${slotDisplayName(slot)}…`);
+  const bytes = await readSlotBytes(slot);
+  if (!hasStashableBytes(bytes)) {
+    status(`Could not read ${slotDisplayName(slot)}.`, true);
+    return;
+  }
+  const info = await describeSlotBytes(slot, bytes);
+  patchLib.patches.push(entryFromBytes({ ...info, slotHint: slot, bytes }));
+  markLibraryDirty(true);
+  renderPatchLibrary();
+  status(`Added "${info.name}" to the library. Save it to keep it permanently.`);
+}
+
+/** Device rows are drag sources (to the library) + drop targets (from it). */
+function wireDeviceSlotDrag(li, slot) {
+  li.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData(DRAG_DEVICE_PATCH, JSON.stringify({ slot }));
+    e.dataTransfer.effectAllowed = "copy";
+  });
+  li.title = "Drag to the patch library to store it, or drop a library patch here";
+}
+
+function wireSlotDropTarget(li, slot) {
+  li.addEventListener("dragover", (e) => {
+    if (!librarianReady()) return;
+    if (!e.dataTransfer.types.includes(DRAG_LIBRARY_PATCH)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    li.classList.add("drop-target");
+  });
+  li.addEventListener("dragleave", () => li.classList.remove("drop-target"));
+  li.addEventListener("drop", (e) => {
+    li.classList.remove("drop-target");
+    if (!e.dataTransfer.types.includes(DRAG_LIBRARY_PATCH)) return;
+    e.preventDefault();
+    try {
+      const { id } = JSON.parse(e.dataTransfer.getData(DRAG_LIBRARY_PATCH));
+      dropLibraryEntryOnSlot(id, slot);
+    } catch (err) { /* malformed drag, ignore */ }
+  });
+  // Clickable fallback for touch/keyboard: shift-click sends the slot to the library.
+  li.addEventListener("dblclick", (e) => {
+    if (!patchLib || !librarianReady()) return;
+    if (e.shiftKey) sendSlotToLibrary(slot);
+  });
+}
+
+let librarianWired = false;
+
+function wireLibrarianDropTargets() {
+  if (librarianWired) return;
+  librarianWired = true;
+  if (!els.patchLibraryList || !els.patchLibrary || !els.panelHead) return;
+  for (const target of [els.patchLibraryList, els.patchLibrary]) {
+    target.addEventListener("dragover", (e) => {
+      if (!device?.isOpen) return;
+      if (!e.dataTransfer.types.includes(DRAG_DEVICE_PATCH)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    });
+    target.addEventListener("drop", (e) => {
+      if (!e.dataTransfer.types.includes(DRAG_DEVICE_PATCH)) return;
+      e.preventDefault();
+      try {
+        const { slot } = JSON.parse(e.dataTransfer.getData(DRAG_DEVICE_PATCH));
+        if (Number.isInteger(slot)) sendSlotToLibrary(slot);
+      } catch (err) { /* malformed drag, ignore */ }
+    });
+  }
+  // POD edit buffer: dropping a library patch on the panel head auditions it.
+  els.panelHead.addEventListener("dragover", (e) => {
+    if (!librarianReady() || profile?.layout !== "fixed-panel") return;
+    if (!e.dataTransfer.types.includes(DRAG_LIBRARY_PATCH)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    els.panelHead.classList.add("drop-target");
+  });
+  els.panelHead.addEventListener("dragleave", () => els.panelHead.classList.remove("drop-target"));
+  els.panelHead.addEventListener("drop", (e) => {
+    els.panelHead.classList.remove("drop-target");
+    if (!e.dataTransfer.types.includes(DRAG_LIBRARY_PATCH)) return;
+    e.preventDefault();
+    try {
+      const { id } = JSON.parse(e.dataTransfer.getData(DRAG_LIBRARY_PATCH));
+      auditionLibraryEntry(id);
+    } catch (err) { /* malformed drag, ignore */ }
+  });
+}
+
+async function auditionLibraryEntry(entryId) {
+  if (!librarianReady()) return;
+  const entry = patchLib.patches.find((e) => e.id === entryId)
+    ?? patchStash.find((e) => e.id === entryId);
+  if (!entry) return;
+  let bytes;
+  try {
+    bytes = entryToBytes(entry);
+  } catch (e) {
+    status(`"${entry.name}" is corrupt and cannot be auditioned.`, true);
+    return;
+  }
+  const ok = await auditionBytes(bytes);
+  status(ok ? `Auditioning "${entry.name}" in the edit buffer.` : `Could not audition "${entry.name}".`, !ok);
+}
+
+const LIBRARY_FILTERS = [{ name: "Patch Library", extensions: [LIBRARY_EXTENSION] }];
+
+function resetLibrarianForDevice() {
+  patchLib = null;
+  patchLibFilePath = null;
+  patchLibFileName = null;
+  patchLibDirty = false;
+  patchStash = [];
+  if (els.patchLibraryList) els.patchLibraryList.innerHTML = "";
+  if (els.patchStashList) els.patchStashList.innerHTML = "";
+  updateLibrarianVisibility();
+}
+
+function newLibrary() {
+  const kind = deviceKindForLibrarian();
+  if (!kind) {
+    status("Connect a device first - libraries hold patches for one device family.", true);
+    return;
+  }
+  if (!confirmLibrarianDiscard()) return;
+  patchLib = createLibrary(kind);
+  patchLibFilePath = null;
+  patchLibFileName = null;
+  patchStash = [];
+  markLibraryDirty(false);
+  renderPatchLibrary();
+  updateLibrarianVisibility();
+  status(`New ${labelForDeviceKind(kind)} library. Drag patches here to store them.`);
+}
+
+async function openLibrary() {
+  const kind = deviceKindForLibrarian();
+  if (!kind) {
+    status("Connect a device first - libraries hold patches for one device family.", true);
+    return;
+  }
+  if (!confirmLibrarianDiscard()) return;
+  const result = await window.fileAPI.openFile({ filters: LIBRARY_FILTERS });
+  if (result.canceled) return;
+  const text = typeof result.data === "string" ? result.data : new TextDecoder().decode(result.data);
+  const parsed = parseLibrary(text, { expectedDeviceKind: kind });
+  if (!parsed.ok) {
+    status(`Could not open library: ${parsed.error}.`, true);
+    return;
+  }
+  patchLib = parsed.library;
+  patchLibFilePath = result.filePath ?? null;
+  patchLibFileName = (result.filePath ?? "library").split(/[\\/]/).pop();
+  patchStash = [];
+  markLibraryDirty(false);
+  renderPatchLibrary();
+  updateLibrarianVisibility();
+  const skipNote = parsed.skipped ? ` (${parsed.skipped} corrupt ${parsed.skipped === 1 ? "entry" : "entries"} skipped)` : "";
+  status(`Opened ${patchLib.patches.length} patches${skipNote}.`);
+}
+
+async function saveLibrary(saveAs = false) {
+  if (!patchLib) return;
+  const suggested = patchLibFileName ?? suggestedLibraryFileName(patchLib.deviceKind);
+  const target = patchLibFilePath;
+  // The web backend downloads instead of writing in place, so always go
+  // through the dialog there; on Electron reuse the known path for Save.
+  const mustDialog = saveAs || !target || typeof target !== "string" || target === patchLibFileName;
+  if (mustDialog) {
+    const result = await window.fileAPI.saveFile({ defaultPath: suggested, data: serializeLibrary(patchLib) });
+    if (result.canceled) return;
+    patchLibFilePath = result.filePath ?? null;
+    patchLibFileName = (result.filePath ?? suggested).split(/[\\/]/).pop();
+  } else {
+    const result = await window.fileAPI.saveFile({ defaultPath: target, data: serializeLibrary(patchLib) });
+    if (result.canceled) return;
+  }
+  markLibraryDirty(false);
+  renderPatchLibrary();
+  status(`Library saved (${patchLib.patches.length} patches).`);
+}
+
+function closeLibrary() {
+  if (!patchLib) return;
+  if (!confirmLibrarianDiscard()) return;
+  resetLibrarianForDevice();
+  status("Library closed. The stash was wiped.");
+}
+
+function wireLibrarianButtons() {
+  if (wireLibrarianButtons.done) return;
+  wireLibrarianButtons.done = true;
+  if (!els.btnLibNew) return;
+  els.btnLibNew.addEventListener("click", newLibrary);
+  els.btnLibOpen.addEventListener("click", openLibrary);
+  els.btnLibSave.addEventListener("click", () => saveLibrary(false));
+  els.btnLibSaveAs.addEventListener("click", () => saveLibrary(true));
+  els.btnLibClose.addEventListener("click", closeLibrary);
+  window.addEventListener("beforeunload", (e) => {
+    if (patchLib && hasPendingWork(patchLibDirty, patchStash)) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+}
+
+function confirmLibrarianDiscard() {
+  if (!patchLib) return true;
+  if (!hasPendingWork(patchLibDirty, patchStash)) return true;
+  const summary = pendingWorkSummary(patchLibDirty, patchStash);
+  return window.confirm(`The library has ${summary} that will be lost. Close anyway?`);
+}
+
 /** A control change arrived from the pedal - move the matching control. */
 function updatePanelControlFromDevice(ccNumber, value) {
   const handle = panelControls.get(ccNumber);
@@ -1343,6 +1866,8 @@ async function restoreToSlot() {
 // --- Wire up buttons ---------------------------------------------------
 
 els.btnConnect.addEventListener("click", connect);
+wireLibrarianDropTargets();
+wireLibrarianButtons();
 els.btnSync.addEventListener("click", syncToPedal);
 els.btnRestore.addEventListener("click", restoreToSlot);
 els.btnSave.addEventListener("click", savePatch);

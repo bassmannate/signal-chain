@@ -191,7 +191,6 @@ input { font-family: inherit; color: inherit; }
   background: var(--panel-raised);
   color: var(--text-primary);
 }
-#patch-list li.active .p-num { color: var(--accent-brass); }
 
 .p-num {
   font-family: var(--font-mono);
@@ -199,6 +198,109 @@ input { font-family: inherit; color: inherit; }
   color: var(--text-faint);
   width: 22px;
   flex-shrink: 0;
+}
+
+/* --- Patch librarian -------------------------------------------------- */
+
+/* A third column in #body, after the device patch list and the stage
+   (see #body's flex rule). Deliberately NOT inside #stage: that is a
+   flex column, so the panel would stack under the chain instead. */
+
+#patch-library {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+#patch-library-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#patch-library-title { font-size: 13px; font-weight: 500; }
+
+#patch-library-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#patch-library-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
+
+#patch-library-list, #patch-stash-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lib-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}
+.lib-row:hover { background: var(--panel-raised); }
+.lib-row .p-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-row .p-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.lib-row.stashed { border-style: dashed; }
+
+.lib-empty {
+  padding: 8px 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.lib-row .row-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.lib-row .row-btn:hover { color: var(--accent-red); }
+.lib-row .row-keep:hover { color: var(--accent-teal); }
+
+#patch-stash-header {
+  margin-top: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-brass);
+}
+
+#patch-list li.drop-target, .lib-row.drop-target, #panel-head.drop-target {
+  outline: 2px dashed var(--accent-brass);
+  outline-offset: 2px;
 }
 .p-name {
   font-size: 13px;

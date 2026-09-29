@@ -65,6 +65,9 @@ sym.bios.is in a browser).
   drag effects into the chain up to the pedal's maximum (typically 6)
 - ✅ Remove effects from the chain - click the × button on each module
   to remove it
+- ✅ Patch librarian (see "Patch librarian" below) - a free-length library
+  file that holds more patches than the pedal has slots, with drag-and-drop
+  both ways
 - ❌ Offline font loading - `index.html` currently pulls IBM Plex from
   Google Fonts; falls back to system fonts if offline, but for a fully
   offline-capable app the font files should be bundled locally
@@ -169,6 +172,48 @@ sys-ex message. The all-programs reply came back as 23 messages of 256 bytes,
 where only the first carries the F0 and only the last carries the F7, so the
 app stitches them back together before parsing (see `_handleSysex()`).
 
+## Patch librarian
+
+Beyond the per-device Save/Load/Backup/Restore above, there's a patch library
+for holding *more* patches than the pedal has slots - the place to keep
+everything, and pull down only what you want to play.
+
+It lives in the third column of the window (right of the signal chain / POD
+panel), visible whenever a device is connected. It works the same way on both
+device families, with **one library per family**: Zoom and POD patch bytes are
+mutually unintelligible, so a library declares which family it holds and will
+refuse to open for the other one. That check happens at file-open time rather
+than at drop time, so a mismatched drop is impossible rather than merely
+rejected.
+
+- **Library file**: a single `.patchlib.json` bundle. Payloads are the devices'
+  exact bytes (Zoom patch blobs, raw 80-byte POD programs) base64-encoded, so
+  nothing is reinterpreted or lost. A corrupt *entry* is skipped and counted
+  when opening; a corrupt *file* is refused with a message in the status bar.
+- **Free-length list**: add as many patches as you like. Order is yours and
+  means nothing about slots; each row remembers where it came from for display
+  only. `New` starts an empty library, `Open`/`Save`/`Save As` work on files,
+  `Close` ends the session.
+- **Device → library**: drag a row from the device patch list onto the library.
+  Dropping onto an empty panel starts a library for the connected device, so
+  you don't have to create one first. (Shift-double-click on a device row does
+  the same thing for keyboard/touch users.)
+- **Library → device**: drag a library row onto a slot in the device list. The
+  slot's current contents are read first and, if there is anything there, moved
+  into the **stash** - so an overwrite never destroys a patch.
+- **Load into the edit buffer** (Bass POD Pro): double-click a library row, or
+  drop it on the panel header, to audition it without writing any slot. On a
+  Zoom pedal the same gestures load the patch into the current patch.
+- **The stash**: patches displaced by a drop, shown at the top of the panel and
+  held **in memory only**. `Keep` moves one into the library proper; `×`
+  discards it. The stash is wiped when the library closes - and closing (or
+  leaving the page) with a non-empty stash or unsaved changes asks first, so it
+  cannot happen by accident.
+
+Only Chromium browsers have the directory APIs that Backup All uses; the
+librarian itself needs nothing beyond a normal file picker, so it works in
+every browser the app runs in.
+
 ## To Do
 - Verify functionality with other devices. I only have the MS-60B+ to test
   with so other pedals such as the MS-50G+ are all theoretical.
@@ -208,7 +253,11 @@ MIDI proxy and asserts the exact bytes on the wire,
 patch-list flow and the write side - renaming a program, the exact upload
 messages Save/Load/Backup/Restore send, and the bytes Backup All would write -
 and `test/controls.test.mjs` drives the panel widgets through
-a minimal DOM stub. `shared/package.json` exists only so the Node test
+a minimal DOM stub. `test/patch-library.test.mjs` covers the librarian's file
+format and stash/warning rules, and `test/app-shell.test.mjs` checks that every
+id `shared/app.js` looks up exists in *both* page shells (with identical id
+sets), then boots the app against a DOM stub to prove its top-level wiring runs.
+`shared/package.json` exists only so the Node test
 runner treats `shared/**/*.js` as ES modules - the app itself never reads it.
 
 The dump tests run against real captures in `test/fixtures/`: a Bass POD Pro on

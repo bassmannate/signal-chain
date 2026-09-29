@@ -1480,25 +1480,28 @@ async function openLibrary() {
   status(`Opened ${patchLib.patches.length} patches${skipNote}.`);
 }
 
+/**
+ * Writes the library to disk.
+ * @returns true only when a save actually completed, so the desktop close
+ *          prompt knows whether it may quit.
+ */
 async function saveLibrary(saveAs = false) {
-  if (!patchLib) return;
-  const suggested = patchLibFileName ?? suggestedLibraryFileName(patchLib.deviceKind);
-  const target = patchLibFilePath;
-  // The web backend downloads instead of writing in place, so always go
-  // through the dialog there; on Electron reuse the known path for Save.
-  const mustDialog = saveAs || !target || typeof target !== "string" || target === patchLibFileName;
-  if (mustDialog) {
-    const result = await window.fileAPI.saveFile({ defaultPath: suggested, data: serializeLibrary(patchLib) });
-    if (result.canceled) return;
-    patchLibFilePath = result.filePath ?? null;
-    patchLibFileName = (result.filePath ?? suggested).split(/[\\/]/).pop();
-  } else {
-    const result = await window.fileAPI.saveFile({ defaultPath: target, data: serializeLibrary(patchLib) });
-    if (result.canceled) return;
-  }
+  if (!patchLib) return false;
+  // Both shells go through a picker, which is what makes "Save" a safe offer
+  // from a close prompt. Electron pre-fills it with the last path (or a
+  // suggested name on Save As); the browser has no paths and downloads under
+  // the file name instead.
+  const defaultPath = saveAs || !patchLibFilePath
+    ? (patchLibFileName ?? suggestedLibraryFileName(patchLib.deviceKind))
+    : patchLibFilePath;
+  const result = await window.fileAPI.saveFile({ defaultPath, data: serializeLibrary(patchLib) });
+  if (result.canceled) return false;
+  patchLibFilePath = result.filePath ?? null;
+  patchLibFileName = (result.filePath ?? defaultPath).split(/[\\/]/).pop();
   markLibraryDirty(false);
   renderPatchLibrary();
   status(`Library saved (${patchLib.patches.length} patches).`);
+  return true;
 }
 
 function closeLibrary() {
@@ -1517,6 +1520,36 @@ function wireLibrarianButtons() {
   els.btnLibSave.addEventListener("click", () => saveLibrary(false));
   els.btnLibSaveAs.addEventListener("click", () => saveLibrary(true));
   els.btnLibClose.addEventListener("click", closeLibrary);
+  // Closing the window with unsaved library work: the desktop shell intercepts
+  // the unload in the main process and shows a native dialog offering to save
+  // (see electron/main.js). It asks for the save through this bridge, and only
+  // a completed write lets the window go.
+  const closeGuard = window.closeGuardAPI;
+  if (closeGuard) {
+    closeGuard.onSaveAndQuit(async () => {
+      // A throw here would leave the main process waiting for a reply that
+      // never comes, and the window would stay open with no explanation -
+      // which is safe but silent, so answer either way.
+      let saved;
+      try {
+        saved = patchLib ? await saveLibrary(false) : true;
+      } catch (e) {
+        status(`Could not save the library: ${e.message}`, true);
+        saved = false;
+      }
+      // A completed save is not by itself permission to quit: the stash is
+      // memory-only by design and so is never in the file. If patches are
+      // still displaced, stay open and say why rather than throw them away
+      // after the user asked to save.
+      if (saved && hasPendingWork(patchLibDirty, patchStash)) {
+        status("Library saved, but the displaced patches above are still unsaved - Keep or discard them, then close again.", true);
+      }
+      await closeGuard.finishSaveAndQuit(saved && !hasPendingWork(patchLibDirty, patchStash));
+    });
+  }
+  // Browsers have a prompt of their own for this and give no control over its
+  // text or buttons, so it is the whole mechanism there - which is why this
+  // cancellation must stay in place for the web build too.
   window.addEventListener("beforeunload", (e) => {
     if (patchLib && hasPendingWork(patchLibDirty, patchStash)) {
       e.preventDefault();

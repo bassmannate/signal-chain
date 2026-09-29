@@ -65,7 +65,29 @@ test("the shells differ only in how they load the app", () => {
   assert.deepEqual(strip(webLines), strip(electronLines));
 });
 
-// --- Boot check ---------------------------------------------------------
+test("the close-guard bridge names agree across preload, main and the app", () => {
+  // These names cross a contextBridge and two IPC channels, so nothing
+  // type-checks them. A typo fails silently - the window close would simply do
+  // nothing again, which is the bug this guard exists to prevent.
+  const preload = fs.readFileSync("electron/preload.js", "utf8");
+  const main = fs.readFileSync("electron/main.js", "utf8");
+  const app = fs.readFileSync("shared/app.js", "utf8");
+
+  assert.ok(app.includes("window.closeGuardAPI"), "app.js reads the bridge the preload exposes");
+  for (const name of ["closeGuardAPI", "onSaveAndQuit", "finishSaveAndQuit"]) {
+    assert.ok(preload.includes(name), `preload.js must expose ${name}`);
+    assert.ok(app.includes(name), `app.js must use ${name}`);
+  }
+  for (const channel of ["save-library-and-quit", "quit-after-library-save"]) {
+    assert.ok(preload.includes(`"${channel}"`), `preload.js must bridge ${channel}`);
+    assert.ok(main.includes(`"${channel}"`), `main.js must handle ${channel}`);
+  }
+  // The desktop prompt is only half the story: the page must also refuse to
+  // unload on its own, or main.js never gets asked.
+  assert.ok(app.includes("beforeunload"), "the page cancels its own unload");
+  assert.ok(main.includes("will-prevent-unload"), "main.js answers that cancellation");
+});
+
 
 class FakeClassList {
   constructor() { this.names = new Set(); }

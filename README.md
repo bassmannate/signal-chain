@@ -206,9 +206,21 @@ rejected.
   Zoom pedal the same gestures load the patch into the current patch.
 - **The stash**: patches displaced by a drop, shown at the top of the panel and
   held **in memory only**. `Keep` moves one into the library proper; `×`
-  discards it. The stash is wiped when the library closes - and closing (or
+  discards it. The stash is drawn in the brass accent - the same colour as the
+  drop outline - so displaced patches read as "needs attention" rather than
+  ordinary rows. The stash is wiped when the library closes - and closing (or
   leaving the page) with a non-empty stash or unsaved changes asks first, so it
   cannot happen by accident.
+- **Closing with unsaved work**: the `Close` button warns, and closing the
+  *window* (or quitting the app) asks through a native dialog offering
+  **Save Library… / Discard and Quit / Cancel**. Only a completed save closes
+  the window - a cancelled save dialog leaves the app open, since nothing has
+  been thrown away at that point. Note that the stash can never be *saved* (it
+  is memory-only by design), so if patches are still displaced after a save the
+  app stays open and says so rather than quietly dropping them.
+  In a browser this last step is the browser's own "Leave site?" prompt, which
+  web pages cannot customise or add buttons to - that dialog is Chrome's, so
+  there is no Save option there.
 
 Only Chromium browsers have the directory APIs that Backup All uses; the
 librarian itself needs nothing beyond a normal file picker, so it works in

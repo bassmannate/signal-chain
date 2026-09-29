@@ -33,6 +33,45 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "..", "shared", "index.html"));
 
+  // --- Unsaved patch library: guard the window close ---------------------
+  //
+  // shared/app.js cancels its own unload (beforeunload) when a patch library
+  // has unsaved changes or a non-empty stash. Without a listener for this
+  // event Electron cancels the close *silently* - the window button appears to
+  // do nothing - and the renderer cannot ask for itself either, because dialogs
+  // (window.confirm and friends) are ignored while a page is unloading. So the
+  // question is a native dialog here, and the renderer is only asked to do the
+  // part it alone can do: write the file.
+  //
+  // Registered here rather than at module scope: mainWindow only exists once
+  // this function has run, and each window needs its own listener.
+  mainWindow.webContents.on("will-prevent-unload", (event) => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      title: "Unsaved patch library",
+      message: "An unsaved patch library is open.",
+      detail: "Library changes and any patches displaced from device slots are held in memory only, so they are lost when the app closes.",
+      buttons: ["Save Library…", "Discard and Quit", "Cancel"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+
+    // "Discard and Quit": ignore the page's beforeunload handler and unload.
+    if (choice === 1) {
+      event.preventDefault();
+      return;
+    }
+    if (choice === 0) {
+      // Leave the unload cancelled and let the renderer save first: it replies
+      // through "quit-after-library-save", and only a completed write closes
+      // the window. A cancelled save dialog leaves the app open, which is the
+      // safe outcome - nothing has been thrown away at that point.
+      mainWindow.webContents.send("save-library-and-quit");
+    }
+    // "Cancel" (choice 2): do nothing, so the close stays cancelled.
+  });
+
   // A totally empty menu (the previous version of this file just called
   // Menu.setApplicationMenu(null)) also silently removes the keyboard
   // shortcut for DevTools, since that shortcut normally comes attached to
@@ -60,6 +99,18 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+// The renderer-side half of that exchange lives in shared/app.js; this handler
+// is module scope because ipcMain.handle() may only be called once per channel,
+// whereas createWindow() can run again on macOS. It quits only when the
+// renderer confirms the library was actually written.
+ipcMain.handle("quit-after-library-save", (_event, saved) => {
+  if (!saved) return { quit: false };
+  // destroy(), not close(): the guard was just satisfied, and close() would
+  // run the renderer's beforeunload again.
+  mainWindow.destroy();
+  return { quit: true };
 });
 
 // --- File I/O, invoked from the renderer via preload's contextBridge ---

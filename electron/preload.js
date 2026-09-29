@@ -11,3 +11,16 @@ contextBridge.exposeInMainWorld("fileAPI", {
   listDir: (opts) => ipcRenderer.invoke("list-dir", opts),
   readFileInDir: (opts) => ipcRenderer.invoke("read-file-in-dir", opts),
 });
+
+// Closing the window with an unsaved patch library is asked about with a
+// native dialog in the main process (main.js handles will-prevent-unload) -
+// window.confirm() is ignored while a page is unloading, so the renderer
+// cannot ask by itself. This bridge is the other half of that exchange: the
+// main process asks for a save, and the answer closes the window or leaves it
+// open. Browsers have no equivalent, so web/file-api.js defines nothing here
+// and shared/app.js falls back to the browser's own unload prompt.
+contextBridge.exposeInMainWorld("closeGuardAPI", {
+  isDesktop: true,
+  onSaveAndQuit: (callback) => ipcRenderer.on("save-library-and-quit", () => callback()),
+  finishSaveAndQuit: (saved) => ipcRenderer.invoke("quit-after-library-save", saved),
+});

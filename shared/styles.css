@@ -21,6 +21,11 @@
 
   --accent-brass: #C99A44;
   --accent-brass-dim: #7A6132;
+  /* Faint brass wash for "needs attention, but nothing is wrong" surfaces -
+     the displaced-patch stash. Kept as a token so the whole treatment (border,
+     fill, Keep button) stays one colour. */
+  --accent-brass-wash: rgba(201, 154, 68, 0.10);
+  --accent-brass-wash-strong: rgba(201, 154, 68, 0.18);
   --accent-teal: #4FA8A0;
   --accent-red: #C1554A;
 
@@ -271,7 +276,14 @@ input { font-family: inherit; color: inherit; }
   color: var(--text-faint);
   white-space: nowrap;
 }
-.lib-row.stashed { border-style: dashed; }
+.lib-row.stashed {
+  border: 1px dashed var(--accent-brass);
+  background: var(--accent-brass-wash);
+}
+.lib-row.stashed:hover { background: var(--accent-brass-wash-strong); }
+/* The Keep button is the one action that makes a stashed patch permanent, so
+   it carries the accent rather than the usual grey-to-red treatment. */
+.lib-row.stashed .row-keep { color: var(--accent-brass); }
 
 .lib-empty {
   padding: 8px 2px;

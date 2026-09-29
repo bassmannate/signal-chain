@@ -14,6 +14,13 @@
 //
 // No imports, no build step: this is a classic script that sets window.fileAPI
 // before shared/app.js (a module, always deferred) runs.
+//
+// Deliberately NOT defined here: window.closeGuardAPI (see
+// electron/preload.js). That bridge exists so the desktop shell can ask the
+// renderer to save when the window is being closed, and the question itself is
+// a native dialog in the main process - a browser has no such dialog and no
+// API to customise the one it uses. shared/app.js checks for the bridge and
+// falls back to the browser's own beforeunload prompt when it is absent.
 (function () {
   "use strict";
 

@@ -23,15 +23,21 @@ import {
   DEVICE_KIND_ZOOM,
   LIBRARY_EXTENSION,
   addToStash,
+  clearLastLibraryForDevice,
   createLibrary,
+  deviceKeyForAutoReopen,
   entryFromBytes,
   entryToBytes,
+  getLastLibraryForDevice,
   hasPendingWork,
   hasStashableBytes,
   labelForDeviceKind,
+  loadAutoReopenSetting,
   parseLibrary,
   pendingWorkSummary,
+  saveAutoReopenSetting,
   serializeLibrary,
+  setLastLibraryForDevice,
   suggestedLibraryFileName,
 } from "./patchLibrary.js";
 
@@ -63,6 +69,86 @@ let patchLibFilePath = null; // last opened/saved path (Electron may reuse it)
 let patchLibFileName = null; // display name (web has no path)
 let patchLibDirty = false;
 let patchStash = []; // entries displaced from the device, memory-only
+
+// --- Auto-reopen: last library per pedal ------------------------------------
+// One global toggle + one remembered file per physical pedal, persisted in
+// window.localStorage (both shells - no config-file plumbing). Only ever
+// fires when no library is open: unsaved work always wins over convenience.
+function appStorage() {
+  try {
+    return typeof window !== "undefined" && window.localStorage ? window.localStorage : null;
+  } catch (e) {
+    return null;
+  }
+}
+let libAutoReopen = loadAutoReopenSetting(appStorage());
+
+/**
+ * Identity of the connected pedal for auto-reopen. Zoom pedals share a
+ * profile id, so the model byte is what keeps the MS-50G+ and MS-60B+
+ * memories apart. Null until a device is connected.
+ */
+function deviceKeyForAutoReopenNow() {
+  return deviceKeyForAutoReopen(profile?.id, currentModelByte);
+}
+
+/** Persist the open library as this pedal's "last library". */
+function rememberOpenLibrary() {
+  if (!patchLib) return;
+  setLastLibraryForDevice(appStorage(), deviceKeyForAutoReopenNow(), {
+    filePath: patchLibFilePath,
+    fileName: patchLibFileName,
+    snapshot: serializeLibrary(patchLib),
+  });
+}
+
+/**
+ * Silent auto-reopen after connect. Never a modal: there is nothing here the
+ * user asked for yet, so any failure (file moved, corrupt, wrong family) is
+ * a one-line status note and the app carries on library-less. New-library
+ * clears the memory (Plan A), so untitled work never reopens by itself.
+ */
+async function maybeAutoReopenLibrary() {
+  if (!libAutoReopen || patchLib) return;
+  const deviceKey = deviceKeyForAutoReopenNow();
+  if (!deviceKey) return;
+  const last = getLastLibraryForDevice(appStorage(), deviceKey);
+  if (!last) return;
+  const kind = deviceKindForLibrarian();
+
+  const openText = (text, { filePath = null, fileName = null } = {}) => {
+    const parsed = parseLibrary(text, { expectedDeviceKind: kind });
+    if (!parsed.ok) {
+      status(`Could not reopen last library: ${parsed.error}.`, true);
+      return;
+    }
+    setOpenLibrary(parsed.library, { filePath, fileName });
+    if (parsed.skipped > 0) {
+      status(`Reopened ${fileName ?? "last library"} (${parsed.library.patches.length} patches, ${parsed.skipped} skipped).`);
+    } else {
+      status(`Reopened ${fileName ?? "last library"} (${parsed.library.patches.length} patches).`);
+    }
+    // Re-persist: the path may have changed, and the snapshot must be fresh.
+    rememberOpenLibrary();
+  };
+
+  if (typeof last.filePath === "string" && window.fileAPI?.readFileAtPath) {
+    try {
+      const res = await window.fileAPI.readFileAtPath({ filePath: last.filePath });
+      if (res?.ok && typeof res.data === "string") {
+        openText(res.data, { filePath: res.filePath ?? last.filePath, fileName: last.fileName });
+        return;
+      }
+    } catch (e) {
+      // Fall through to the snapshot below.
+    }
+  }
+  if (typeof last.snapshot === "string") {
+    openText(last.snapshot, { fileName: last.fileName });
+  } else {
+    status(`Could not reopen last library (file is gone and no copy was kept).`, true);
+  }
+}
 
 const el = (id) => document.getElementById(id);
 const els = {
@@ -101,6 +187,7 @@ const els = {
   btnLibSaveAs: el("btn-lib-save-as"),
   btnLibClose: el("btn-lib-close"),
   btnLibNew: el("btn-lib-new"),
+  libAutoReopen: el("lib-auto-reopen"),
   panelWrap: el("panel-wrap"),
   panelModel: el("panel-model"),
   panelProgram: el("panel-program"),
@@ -168,6 +255,8 @@ function setConnected(open, name) {
 
   // The librarian panel only makes sense with a device attached.
   updateLibrarianVisibility();
+  // Silent auto-reopen never blocks the connect flow: failures are status-only.
+  maybeAutoReopenLibrary();
 
   if (!open) {
     els.patchNumber.textContent = "--";
@@ -1090,6 +1179,12 @@ function modelForSlotHint() {
 }
 
 function updateLibrarianVisibility() {
+  // The toggle reflects the persisted setting even with no device attached,
+  // so sync it here (not in renderLibraryHeader, which renderLibraryList
+  // skips while the panel is hidden).
+  if (els.libAutoReopen && els.libAutoReopen.checked !== libAutoReopen) {
+    els.libAutoReopen.checked = libAutoReopen;
+  }
   if (!els.patchLibrary) return;
   // Visible whenever a device is attached, even with no library open: the
   // panel is also the drop target that creates one (see sendSlotToLibrary).
@@ -1308,10 +1403,11 @@ async function sendSlotToLibrary(slot) {
   // Dropping onto an empty panel is the natural way to start a library, so
   // create one for the connected device rather than refusing the drop.
   if (!patchLib) {
-    patchLib = createLibrary(kind);
-    patchLibFilePath = null;
-    patchLibFileName = null;
-    patchStash = [];
+    setOpenLibrary(createLibrary(kind), { filePath: null, fileName: null });
+    // A drop-created library is real work, so it becomes the memory - but
+    // only once it holds a patch; setOpenLibrary remembered the empty shell,
+    // so forget it here and let the first appended patch re-remember.
+    clearLastLibraryForDevice(appStorage(), deviceKeyForAutoReopenNow());
     markLibraryDirty(true);
     status(`Started a new ${labelForDeviceKind(kind)} library from the dropped patch.`);
   }
@@ -1329,6 +1425,9 @@ async function sendSlotToLibrary(slot) {
   patchLib.patches.push(entryFromBytes({ ...info, slotHint: slot, bytes }));
   markLibraryDirty(true);
   renderPatchLibrary();
+  // A patch added to a remembered library keeps the memory fresh; a patch
+  // added to a drop-created shell first makes it worth remembering.
+  rememberOpenLibrary();
   status(`Added "${info.name}" to the library. Save it to keep it permanently.`);
 }
 
@@ -1434,7 +1533,25 @@ function resetLibrarianForDevice() {
   patchStash = [];
   if (els.patchLibraryList) els.patchLibraryList.innerHTML = "";
   if (els.patchStashList) els.patchStashList.innerHTML = "";
+  renderLibraryHeader();
   updateLibrarianVisibility();
+}
+
+/**
+ * Single funnel for "this library is now open": sets state, clears the
+ * stash, repaints, and remembers it as this pedal's last library.
+ * Every opener (picker, auto-reopen, drop-created) goes through here so the
+ * memory can never drift from what is on screen.
+ */
+function setOpenLibrary(library, { filePath = null, fileName = null } = {}) {
+  patchLib = library;
+  patchLibFilePath = filePath;
+  patchLibFileName = fileName;
+  patchStash = [];
+  markLibraryDirty(false);
+  renderPatchLibrary();
+  updateLibrarianVisibility();
+  rememberOpenLibrary();
 }
 
 function newLibrary() {
@@ -1451,6 +1568,9 @@ function newLibrary() {
   markLibraryDirty(false);
   renderPatchLibrary();
   updateLibrarianVisibility();
+  // Plan A: an untitled empty library is not worth reopening, so it clears
+  // this pedal's memory instead of becoming it.
+  clearLastLibraryForDevice(appStorage(), deviceKeyForAutoReopenNow());
   status(`New ${labelForDeviceKind(kind)} library. Drag patches here to store them.`);
 }
 
@@ -1469,13 +1589,10 @@ async function openLibrary() {
     status(`Could not open library: ${parsed.error}.`, true);
     return;
   }
-  patchLib = parsed.library;
-  patchLibFilePath = result.filePath ?? null;
-  patchLibFileName = (result.filePath ?? "library").split(/[\\/]/).pop();
-  patchStash = [];
-  markLibraryDirty(false);
-  renderPatchLibrary();
-  updateLibrarianVisibility();
+  setOpenLibrary(parsed.library, {
+    filePath: result.filePath ?? null,
+    fileName: (result.filePath ?? "library").split(/[\\/]/).pop(),
+  });
   const skipNote = parsed.skipped ? ` (${parsed.skipped} corrupt ${parsed.skipped === 1 ? "entry" : "entries"} skipped)` : "";
   status(`Opened ${patchLib.patches.length} patches${skipNote}.`);
 }
@@ -1499,6 +1616,8 @@ async function saveLibrary(saveAs = false) {
   patchLibFilePath = result.filePath ?? null;
   patchLibFileName = (result.filePath ?? defaultPath).split(/[\\/]/).pop();
   markLibraryDirty(false);
+  // A completed save is the freshest possible memory of this library.
+  rememberOpenLibrary();
   renderPatchLibrary();
   status(`Library saved (${patchLib.patches.length} patches).`);
   return true;
@@ -1520,6 +1639,19 @@ function wireLibrarianButtons() {
   els.btnLibSave.addEventListener("click", () => saveLibrary(false));
   els.btnLibSaveAs.addEventListener("click", () => saveLibrary(true));
   els.btnLibClose.addEventListener("click", closeLibrary);
+  // Persistent auto-reopen toggle: its state IS the setting, shared by both
+  // shells via localStorage. Placed here (not an options window) so the
+  // control lives where it acts and accidental flips are immediately visible.
+  if (els.libAutoReopen) {
+    els.libAutoReopen.checked = libAutoReopen;
+    els.libAutoReopen.addEventListener("change", () => {
+      libAutoReopen = els.libAutoReopen.checked;
+      saveAutoReopenSetting(appStorage(), libAutoReopen);
+      status(libAutoReopen
+        ? "Auto-reopen on: this pedal's last library will reopen on connect."
+        : "Auto-reopen off: connecting will no longer reopen a library.");
+    });
+  }
   // Closing the window with unsaved library work: the desktop shell intercepts
   // the unload in the main process and shows a native dialog offering to save
   // (see electron/main.js). It asks for the save through this bridge, and only

@@ -5,18 +5,34 @@ import {
   DEVICE_KIND_ZOOM,
   LIBRARY_EXTENSION,
   addToStash,
+  clearLastLibraryForDevice,
   createLibrary,
+  deviceKeyForAutoReopen,
   entryFromBytes,
   entryToBytes,
+  getLastLibraryForDevice,
   hasPendingWork,
   hasStashableBytes,
   labelForDeviceKind,
+  loadAutoReopenSetting,
   parseLibrary,
   pendingWorkSummary,
+  saveAutoReopenSetting,
   serializeLibrary,
+  setLastLibraryForDevice,
   suggestedLibraryFileName,
   validateLibraryObject,
 } from "../shared/patchLibrary.js";
+
+function memoryStorage() {
+  const store = new Map();
+  return {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+    removeItem: (k) => { store.delete(k); },
+    _raw: (k) => store.get(k),
+  };
+}
 
 describe("patchLibrary bundle format", () => {
   it("round-trips Zoom bytes through base64 entries", () => {
@@ -95,6 +111,60 @@ describe("patchLibrary bundle format", () => {
     assert.equal(hasPendingWork(true, []), true, "unsaved edits alone are enough");
     assert.equal(hasPendingWork(false, [{}]), true, "a stashed patch alone is enough");
     assert.equal(hasPendingWork(false, undefined), false, "no stash at all is fine");
+  });
+
+  it("keys auto-reopen per physical pedal, not per family", () => {
+    assert.equal(deviceKeyForAutoReopen("zoom-plus", 0x23), "zoom-plus:35");
+    assert.equal(deviceKeyForAutoReopen("zoom-plus", 0x27), "zoom-plus:39");
+    assert.notEqual(
+      deviceKeyForAutoReopen("zoom-plus", 0x23),
+      deviceKeyForAutoReopen("zoom-plus", 0x27),
+      "an MS-50G+ and an MS-60B+ must not share a memory"
+    );
+    assert.equal(deviceKeyForAutoReopen("bass-pod-pro"), "bass-pod-pro");
+    assert.equal(deviceKeyForAutoReopen("zoom-plus", undefined), "zoom-plus");
+    assert.equal(deviceKeyForAutoReopen("unknown", 1), null);
+  });
+
+  it("persists the auto-reopen toggle, defaulting to off", () => {
+    const storage = memoryStorage();
+    assert.equal(loadAutoReopenSetting(storage), false, "absent storage means off");
+    saveAutoReopenSetting(storage, true);
+    assert.equal(storage._raw("signal-chain.libAutoReopen"), "1");
+    assert.equal(loadAutoReopenSetting(storage), true);
+    saveAutoReopenSetting(storage, false);
+    assert.equal(loadAutoReopenSetting(storage), false);
+    assert.equal(loadAutoReopenSetting(null), false, "no storage is off, not a crash");
+    assert.equal(loadAutoReopenSetting({ getItem: () => { throw new Error("denied"); } }), false);
+  });
+
+  it("remembers one library per pedal and forgets on New", () => {
+    const storage = memoryStorage();
+    const libA = { ...createLibrary(DEVICE_KIND_ZOOM), patches: [entryFromBytes({ name: "A", bytes: new Uint8Array([1]) })] };
+    const libB = { ...createLibrary(DEVICE_KIND_ZOOM), patches: [entryFromBytes({ name: "B", bytes: new Uint8Array([2]) })] };
+    const key60 = deviceKeyForAutoReopen("zoom-plus", 0x27);
+    const key50 = deviceKeyForAutoReopen("zoom-plus", 0x23);
+    setLastLibraryForDevice(storage, key60, { filePath: "/lib/A.patchlib.json", fileName: "A.patchlib.json", snapshot: serializeLibrary(libA) });
+    setLastLibraryForDevice(storage, key50, { filePath: "/lib/B.patchlib.json", fileName: "B.patchlib.json", snapshot: serializeLibrary(libB) });
+    const gotA = getLastLibraryForDevice(storage, key60);
+    assert.equal(gotA.fileName, "A.patchlib.json");
+    assert.equal(parseLibrary(gotA.snapshot).library.patches[0].name, "A");
+    // The two pedals do not overwrite each other.
+    assert.equal(getLastLibraryForDevice(storage, key50).fileName, "B.patchlib.json");
+    // Plan A: New clears this pedal's memory only.
+    clearLastLibraryForDevice(storage, key60);
+    assert.equal(getLastLibraryForDevice(storage, key60), null);
+    assert.notEqual(getLastLibraryForDevice(storage, key50), null, "the other pedal keeps its memory");
+  });
+
+  it("rejects junk memories instead of reopening them", () => {
+    const storage = memoryStorage();
+    assert.equal(getLastLibraryForDevice(storage, null), null);
+    assert.equal(getLastLibraryForDevice(storage, "zoom-plus:39"), null, "nothing stored yet");
+    storage.setItem("signal-chain.libLastByDevice", "not json");
+    assert.equal(getLastLibraryForDevice(storage, "zoom-plus:39"), null, "corrupt map reads as empty");
+    storage.setItem("signal-chain.libLastByDevice", JSON.stringify({ "zoom-plus:39": { nope: 1 } }));
+    assert.equal(getLastLibraryForDevice(storage, "zoom-plus:39"), null, "entry with no path/name/snapshot is ignored");
   });
 
   it("describes what closing would lose", () => {

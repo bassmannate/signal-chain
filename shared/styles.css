@@ -929,3 +929,18 @@ input { font-family: inherit; color: inherit; }
 #crc-indicator.ok { color: var(--accent-teal); }
 #crc-indicator.bad { color: var(--accent-red); }
 
+
+/* Auto-reopen footer: small persistent toggle, same quiet treatment as other
+   footer hints. Sits below the list so it never competes with patch rows. */
+#lib-auto-reopen-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 2px 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+#lib-auto-reopen-wrap:hover { color: var(--text-dim); }
+#lib-auto-reopen-wrap input { accent-color: var(--accent-brass); cursor: pointer; }

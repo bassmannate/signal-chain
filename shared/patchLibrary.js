@@ -191,5 +191,125 @@ export function serializeLibrary(library) {
   return JSON.stringify(library, null, 2);
 }
 
+// --- Auto-reopen preferences -----------------------------------------------
+//
+// Remembers, per physical pedal, which library file was last open - so
+// connecting the MS-60B+ can silently reopen "library A" while the MS-50G+
+// reopens "library B". This module stays pure: the caller hands it a
+// Storage-like object (window.localStorage in both shells), which keeps this
+// testable in node and means no new config-file plumbing anywhere.
+//
+// Stored shapes:
+//   signal-chain.libAutoReopen   -> "1" or "0" (one global toggle)
+//   signal-chain.libLastByDevice -> JSON object keyed by device key:
+//     { "<key>": { filePath, fileName, snapshot } }
+// snapshot is the last-saved serializeLibrary() text. It is the whole
+// mechanism on the web (browsers cannot re-read an arbitrary disk path
+// without a picker prompt) and the fallback on Electron when the file has
+// moved or been deleted.
+
+export const LIB_AUTO_REOPEN_KEY = "signal-chain.libAutoReopen";
+export const LIB_LAST_BY_DEVICE_KEY = "signal-chain.libLastByDevice";
+
+/**
+ * Key identifying one physical pedal for auto-reopen. Zoom pedals share a
+ * profile id, so the model byte is what tells an MS-50G+ (0x23) apart from
+ * an MS-60B+ (0x27). Returns null when there is no usable identity.
+ */
+export function deviceKeyForAutoReopen(profileId, modelByte) {
+  if (profileId === DEVICE_KIND_POD) return DEVICE_KIND_POD;
+  if (profileId === DEVICE_KIND_ZOOM) {
+    const model = Number(modelByte);
+    if (Number.isFinite(model)) return `${DEVICE_KIND_ZOOM}:${model}`;
+    return DEVICE_KIND_ZOOM;
+  }
+  return null;
+}
+
+/** Global auto-reopen toggle; absent or unreadable storage means off. */
+export function loadAutoReopenSetting(storage) {
+  try {
+    const raw = storage?.getItem?.(LIB_AUTO_REOPEN_KEY);
+    return raw === "1" || raw === "true";
+  } catch (e) {
+    return false;
+  }
+}
+
+export function saveAutoReopenSetting(storage, enabled) {
+  try {
+    storage?.setItem?.(LIB_AUTO_REOPEN_KEY, enabled ? "1" : "0");
+  } catch (e) {
+    // Private-mode / quota failure: the toggle just does not persist.
+  }
+}
+
+function readLastMap(storage) {
+  try {
+    const raw = storage?.getItem?.(LIB_LAST_BY_DEVICE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    return obj;
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeLastMap(storage, map) {
+  storage?.setItem?.(LIB_LAST_BY_DEVICE_KEY, JSON.stringify(map));
+}
+
+function isValidLastEntry(entry) {
+  return Boolean(entry) && typeof entry === "object" &&
+    (typeof entry.filePath === "string" || typeof entry.fileName === "string" || typeof entry.snapshot === "string");
+}
+
+/** The remembered library for one pedal, or null. */
+export function getLastLibraryForDevice(storage, deviceKey) {
+  if (!deviceKey) return null;
+  const entry = readLastMap(storage)[deviceKey];
+  return isValidLastEntry(entry) ? entry : null;
+}
+
+/**
+ * Remember a library for one pedal. On quota failure the snapshot (the
+ * largest part) is dropped and the path/name are kept, so Electron - which
+ * can re-read the path - still reopens.
+ */
+export function setLastLibraryForDevice(storage, deviceKey, { filePath, fileName, snapshot }) {
+  if (!deviceKey || !storage?.getItem) return;
+  const map = readLastMap(storage);
+  const entry = {};
+  if (typeof filePath === "string" && filePath) entry.filePath = filePath;
+  if (typeof fileName === "string" && fileName) entry.fileName = fileName;
+  if (typeof snapshot === "string" && snapshot) entry.snapshot = snapshot;
+  map[deviceKey] = entry;
+  try {
+    writeLastMap(storage, map);
+  } catch (e) {
+    try {
+      delete entry.snapshot;
+      writeLastMap(storage, map);
+    } catch (e2) {
+      // Storage unusable: auto-reopen just stays off for this pedal.
+    }
+  }
+}
+
+/** Forget a pedal's library (used for "New": an empty library is not worth reopening). */
+export function clearLastLibraryForDevice(storage, deviceKey) {
+  if (!deviceKey) return;
+  try {
+    const map = readLastMap(storage);
+    if (!(deviceKey in map)) return;
+    delete map[deviceKey];
+    writeLastMap(storage, map);
+  } catch (e) {
+    // Storage unusable: nothing to forget.
+  }
+}
+
+
 
 

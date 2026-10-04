@@ -82,6 +82,11 @@ test("the close-guard bridge names agree across preload, main and the app", () =
     assert.ok(preload.includes(`"${channel}"`), `preload.js must bridge ${channel}`);
     assert.ok(main.includes(`"${channel}"`), `main.js must handle ${channel}`);
   }
+  assert.ok(preload.includes("readFileAtPath"), "preload.js must bridge the silent re-read");
+  assert.ok(main.includes('"read-file-at-path"'), "main.js must handle the silent re-read");
+  assert.ok(app.includes("readFileAtPath"), "app.js must use the silent re-read");
+  assert.ok(fs.readFileSync("web/file-api.js", "utf8").includes("readFileAtPath"),
+    "the web backend must answer the same method (with ok:false)");
   // The desktop prompt is only half the story: the page must also refuse to
   // unload on its own, or main.js never gets asked.
   assert.ok(app.includes("beforeunload"), "the page cancels its own unload");
@@ -160,7 +165,16 @@ globalThis.window = {
     writeFileInDir: async () => ({}),
     listDir: async () => [],
     readFileInDir: async () => ({}),
+    readFileAtPath: async () => ({ ok: false }),
   },
+  localStorage: (() => {
+    const store = new Map();
+    return {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => { store.set(k, String(v)); },
+      removeItem: (k) => { store.delete(k); },
+    };
+  })(),
 };
 globalThis.navigator = {
   requestMIDIAccess: async () => ({ inputs: new Map(), outputs: new Map() }),
@@ -180,4 +194,6 @@ test("app.js initialises and wires the transport and librarian controls", () => 
     "the library accepts dropped device patches");
   assert.equal(elementFor("panel-head").listenerCount("dragover"), 1,
     "the POD edit buffer accepts dropped library patches");
+  assert.equal(elementFor("lib-auto-reopen").listenerCount("change"), 1,
+    "the auto-reopen toggle persists its setting");
 });

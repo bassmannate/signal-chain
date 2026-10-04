@@ -117,6 +117,21 @@ ipcMain.handle("quit-after-library-save", (_event, saved) => {
 // (Renderer runs with nodeIntegration off, so it can't touch fs directly -
 // this is the sanctioned path for save/open dialogs.)
 
+ipcMain.handle("read-file-at-path", async (_event, { filePath }) => {
+  // Silent re-read of a library path the user picked earlier via openFile or
+  // saveFile - the only prompt-free read the sandbox allows, because the path
+  // itself is proof of consent. Anything else (missing path, unreadable or
+  // deleted file) reports ok:false and the renderer falls back to its stored
+  // snapshot instead of showing an error dialog.
+  try {
+    if (typeof filePath !== "string" || !filePath) return { ok: false };
+    const data = await fs.readFile(filePath, "utf-8");
+    return { ok: true, filePath, data };
+  } catch (e) {
+    return { ok: false };
+  }
+});
+
 ipcMain.handle("save-file", async (_event, { defaultPath, data, filters, binary }) => {
   const result = await dialog.showSaveDialog(mainWindow, { defaultPath, filters });
   if (result.canceled || !result.filePath) return { canceled: true };

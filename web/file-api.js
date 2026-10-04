@@ -1,5 +1,5 @@
 // Browser implementation of the window.fileAPI contract (see
-// electron/preload.js for the Electron side). Same six methods, same shapes:
+// electron/preload.js for the Electron side). Same core methods, same shapes:
 // saveFile/openFile return { canceled, ... }, openDirectory returns
 // { canceled, dirPath }, writeFileInDir returns { filePath }.
 //
@@ -98,6 +98,13 @@
         input.addEventListener("cancel", () => resolve({ canceled: true }));
         input.click();
       });
+    },
+
+    async readFileAtPath() {
+      // No prompt-free disk reads in a browser: the path is just a file name
+      // here, with no handle behind it. Auto-reopen restores its stored
+      // snapshot instead (see patchLibrary getLastLibraryForDevice).
+      return { ok: false };
     },
 
     async openDirectory() {

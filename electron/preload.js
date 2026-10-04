@@ -6,6 +6,11 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("fileAPI", {
   saveFile: (opts) => ipcRenderer.invoke("save-file", opts),
   openFile: (opts) => ipcRenderer.invoke("open-file", opts),
+  // Silent re-read of a library path the user picked earlier (Open/Save) -
+  // the prompt-free half of auto-reopen. Resolves { ok, filePath?, data? };
+  // ok:false means the file moved or is unreadable, and the renderer falls
+  // back to its stored snapshot. No dialog is ever shown here.
+  readFileAtPath: (opts) => ipcRenderer.invoke("read-file-at-path", opts),
   openDirectory: () => ipcRenderer.invoke("open-directory"),
   writeFileInDir: (opts) => ipcRenderer.invoke("write-file-in-dir", opts),
   listDir: (opts) => ipcRenderer.invoke("list-dir", opts),

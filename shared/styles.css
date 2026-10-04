@@ -944,3 +944,15 @@ input { font-family: inherit; color: inherit; }
 }
 #lib-auto-reopen-wrap:hover { color: var(--text-dim); }
 #lib-auto-reopen-wrap input { accent-color: var(--accent-brass); cursor: pointer; }
+#knob-reverse-wheel-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 2px;
+  font-size: 11px;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+#knob-reverse-wheel-wrap:hover { color: var(--text-dim); }
+#knob-reverse-wheel-wrap input { accent-color: var(--accent-brass); cursor: pointer; }

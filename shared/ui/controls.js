@@ -6,6 +6,26 @@
 // knob implementation. The Zoom path is unchanged: same markup, same CSS
 // hooks, same drag maths.
 
+/**
+ * Wheel polarity for knob turning. Browsers never expose the OS
+ * "natural scrolling" setting, and a reversed touchpad delivers events
+ * identical to a normal mouse wheel - so the choice lives here as an
+ * explicit user toggle instead of a fragile heuristic. app.js sets it
+ * from the persisted footer checkbox; the default (false) is wheel-up =
+ * increase, matching drag-up. Only knob hover is affected: the handler
+ * below is attached to knob elements alone, so scrolling every list,
+ * panel, and page elsewhere keeps the OS behavior untouched.
+ */
+let knobReverseWheel = false;
+
+export function setKnobReverseWheel(reversed) {
+    knobReverseWheel = Boolean(reversed);
+}
+
+export function isKnobReverseWheel() {
+    return knobReverseWheel;
+}
+
 export function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
@@ -63,18 +83,23 @@ export function setKnobVisual(knobEl, value, max, min = 0) {
  */
 export function wireKnobDrag(knobEl, options) {
     const { min = 0, max = 127, getValue, onChange, dragRangePx = 150 } = options;
+    const WHEEL_COARSE_MULTIPLIER = 10; // Shift+wheel jumps, for 0-127 ranges
     let dragging = false;
     let startY = 0;
     let startValue = 0;
     const span = max - min;
 
+    const applyValue = (newValue) => {
+        const clamped = clamp(newValue, min, max);
+        setKnobVisual(knobEl, clamped, max, min);
+        onChange(clamped);
+    };
+
     const onMove = (ev) => {
         if (!dragging) return;
         const deltaY = startY - ev.clientY; // dragging up increases value
         const deltaValue = Math.round((deltaY / dragRangePx) * span);
-        const newValue = clamp(startValue + deltaValue, min, max);
-        setKnobVisual(knobEl, newValue, max, min);
-        onChange(newValue);
+        applyValue(startValue + deltaValue);
     };
     const onUp = () => {
         dragging = false;
@@ -89,6 +114,23 @@ export function wireKnobDrag(knobEl, options) {
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
     });
+
+    // Scroll-wheel editing: hover the knob and roll. Wheel up increases (same
+    // direction as dragging up); Shift rolls in tens for long 0-127 ranges.
+    // The listener is non-passive so preventDefault() stops the page scrolling
+    // underneath the knob. Deltas are reduced to a sign so mice (pixels),
+    // line-mode wheels, and trackpads (many tiny ticks) all step evenly, and
+    // the live getValue() keeps wheel/drag sequences from jumping.
+    knobEl.addEventListener("wheel", (ev) => {
+        ev.preventDefault();
+        const notch = Math.sign(ev.deltaY);
+        if (notch === 0) return;
+        const step = ev.shiftKey ? WHEEL_COARSE_MULTIPLIER : 1;
+        // Reversed touchpads deliver flipped signs the page cannot detect,
+        // so the user-chosen polarity (setKnobReverseWheel) decides here.
+        const direction = knobReverseWheel ? 1 : -1;
+        applyValue(getValue() + direction * notch * step);
+    }, { passive: false });
 }
 
 /**

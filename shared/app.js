@@ -15,6 +15,7 @@ import {
   buildSelectUnit,
   buildToggleUnit,
   formatByBands,
+  setKnobReverseWheel,
   setKnobVisual,
   wireKnobDrag,
 } from "./ui/controls.js";
@@ -82,6 +83,24 @@ function appStorage() {
   }
 }
 let libAutoReopen = loadAutoReopenSetting(appStorage());
+const KNOB_REVERSE_WHEEL_KEY = "signal-chain.knobReverseWheel";
+function loadKnobReverseWheel(storage) {
+  try {
+    const raw = storage?.getItem?.(KNOB_REVERSE_WHEEL_KEY);
+    return raw === "1" || raw === "true";
+  } catch (e) {
+    return false;
+  }
+}
+function saveKnobReverseWheel(storage, enabled) {
+  try {
+    storage?.setItem?.(KNOB_REVERSE_WHEEL_KEY, enabled ? "1" : "0");
+  } catch (e) {
+    // Private-mode / quota failure: the toggle just does not persist.
+  }
+}
+let knobReverseWheelOn = loadKnobReverseWheel(appStorage());
+setKnobReverseWheel(knobReverseWheelOn);
 
 /**
  * Identity of the connected pedal for auto-reopen. Zoom pedals share a
@@ -188,6 +207,7 @@ const els = {
   btnLibClose: el("btn-lib-close"),
   btnLibNew: el("btn-lib-new"),
   libAutoReopen: el("lib-auto-reopen"),
+  knobReverseWheel: el("knob-reverse-wheel"),
   panelWrap: el("panel-wrap"),
   panelModel: el("panel-model"),
   panelProgram: el("panel-program"),
@@ -1185,6 +1205,9 @@ function updateLibrarianVisibility() {
   if (els.libAutoReopen && els.libAutoReopen.checked !== libAutoReopen) {
     els.libAutoReopen.checked = libAutoReopen;
   }
+  if (els.knobReverseWheel && els.knobReverseWheel.checked !== knobReverseWheelOn) {
+    els.knobReverseWheel.checked = knobReverseWheelOn;
+  }
   if (!els.patchLibrary) return;
   // Visible whenever a device is attached, even with no library open: the
   // panel is also the drop target that creates one (see sendSlotToLibrary).
@@ -1650,6 +1673,20 @@ function wireLibrarianButtons() {
       status(libAutoReopen
         ? "Auto-reopen on: this pedal's last library will reopen on connect."
         : "Auto-reopen off: connecting will no longer reopen a library.");
+    });
+  }
+  // Knob-only wheel polarity (see controls.js): natural-scroll touchpads flip
+  // the sign the page sees, so this compensates without touching scrolling
+  // anywhere else - no global wheel listener exists or is planned.
+  if (els.knobReverseWheel) {
+    els.knobReverseWheel.checked = knobReverseWheelOn;
+    els.knobReverseWheel.addEventListener("change", () => {
+      knobReverseWheelOn = els.knobReverseWheel.checked;
+      setKnobReverseWheel(knobReverseWheelOn);
+      saveKnobReverseWheel(appStorage(), knobReverseWheelOn);
+      status(knobReverseWheelOn
+        ? "Knob scroll reversed: touchpad-natural direction on knobs."
+        : "Knob scroll normal: wheel-up turns knobs up.");
     });
   }
   // Closing the window with unsaved library work: the desktop shell intercepts

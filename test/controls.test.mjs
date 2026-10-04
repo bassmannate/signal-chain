@@ -18,6 +18,8 @@ import {
   buildToggleUnit,
   clamp,
   formatByBands,
+  isKnobReverseWheel,
+  setKnobReverseWheel,
   setKnobVisual,
 } from "../shared/ui/controls.js";
 
@@ -60,7 +62,7 @@ class FakeElement {
   addEventListener(type, listener) { this.listeners.set(type, listener); }
   removeEventListener(type, listener) { if (this.listeners.get(type) === listener) this.listeners.delete(type); }
   /** Pretend the user did something to this element. */
-  fire(type, event = {}) { this.listeners.get(type)?.({ target: this, ...event }); }
+  fire(type, event = {}) { this.listeners.get(type)?.({ preventDefault() {}, target: this, ...event }); }
   // Only the one innerHTML shape the widgets use: a flat run of empty divs.
   set innerHTML(html) {
     this.children = [];
@@ -135,6 +137,71 @@ test("knob: dragging up sends increasing values and clamps at the top of the ran
   assert.deepEqual(sent, [63, 126]);
   assert.equal(knob.el.classList.contains("unset"), false, "once moved, the value is known");
   assert.equal(knob.el.querySelector(".knob-value").textContent, "126");
+});
+
+test("knob: scroll wheel steps the value up and down without dragging", () => {
+  const sent = [];
+  const knob = buildKnobUnit({ label: "Drive", min: 0, max: 126, value: 60, onChange: (v) => sent.push(v) });
+  let prevented = 0;
+  const wheel = (deltaY, shiftKey = false) => {
+    knob.knobEl.fire("wheel", { deltaY, shiftKey, preventDefault: () => { prevented++; } });
+  };
+
+  wheel(-100); // wheel up increases
+  wheel(-100);
+  wheel(53); // wheel down decreases, odd pixel counts still step once
+  assert.deepEqual(sent, [61, 62, 61]);
+  assert.equal(prevented, 3, "the page must not scroll underneath the knob");
+  assert.equal(knob.el.querySelector(".knob-value").textContent, "61");
+});
+
+test("knob: wheel clamps at the ends, ignores flat ticks, and Shift jumps in tens", () => {
+  const sent = [];
+  const knob = buildKnobUnit({ label: "Gain", min: 0, max: 127, value: 125, onChange: (v) => sent.push(v) });
+  const wheel = (deltaY, shiftKey = false) => knob.knobEl.fire("wheel", { deltaY, shiftKey });
+
+  wheel(-300); // line-mode wheels report big deltas; still a single step
+  wheel(-100);
+  wheel(-100); // past the top: clamped, not wrapped
+  assert.deepEqual(sent, [126, 127, 127]);
+
+  const before = sent.length;
+  wheel(0); // flat trackpad tick: no value, no send
+  assert.equal(sent.length, before);
+
+  wheel(100, true); // Shift+wheel down: coarse jump
+  assert.deepEqual(sent.slice(-1), [117]);
+});
+
+test("knob: reversed wheel polarity flips the step direction only on knobs", () => {
+  assert.equal(isKnobReverseWheel(), false, "default is wheel-up increases");
+  const sent = [];
+  const knob = buildKnobUnit({ label: "Drive", min: 0, max: 126, value: 60, onChange: (v) => sent.push(v) });
+  const wheel = (deltaY, shiftKey = false) => knob.knobEl.fire("wheel", { deltaY, shiftKey });
+
+  setKnobReverseWheel(true);
+  try {
+    assert.equal(isKnobReverseWheel(), true);
+    wheel(-100); // would increase normally; now decreases (touchpad-natural)
+    wheel(100, true); // Shift jump follows the same flipped polarity
+    assert.deepEqual(sent, [59, 69], "59 then 59+10: polarity flips, magnitude rule unchanged");
+  } finally {
+    setKnobReverseWheel(false); // other tests assume the default
+  }
+  assert.equal(isKnobReverseWheel(), false);
+  wheel(-100);
+  assert.deepEqual(sent.slice(-1), [70], "default polarity restored");
+});
+
+test("knob: wheel after a drag continues from the live value", () => {
+  const sent = [];
+  const knob = buildKnobUnit({ label: "Drive", min: 0, max: 126, value: 0, unset: true, onChange: (v) => sent.push(v) });
+
+  knob.knobEl.fire("pointerdown", { clientY: 100 });
+  fakeWindow.fire("pointermove", { clientY: 25 }); // half the 150px sweep = 63
+  fakeWindow.fire("pointerup", {});
+  knob.knobEl.fire("wheel", { deltaY: -100 });
+  assert.deepEqual(sent, [63, 64], "the wheel reads getValue(), not a stale drag start");
 });
 
 test("knob: setValue is display-only, setUnset puts it back to unknown", () => {

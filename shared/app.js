@@ -345,6 +345,14 @@ function effectInfo(id) {
   return effectMap[key] || null;
 }
 
+// The BPM block's knob edits patch tempo, not an effect parameter: the pedal
+// stores tempo in PRM2 and broadcasts it as parameterValueV2 slot 100 /
+// parameter 2 (see ZoomDevice.setTempoOnDevice / messageTypes.tempoV2).
+// Both block variants - utility (07000ff0) and effects-section (09000ff0).
+function isTempoBlockId(id) {
+  return id === 0x07000ff0 || id === 0x09000ff0;
+}
+
 // --- Connect flow --------------------------------------------------------
 
 async function connect() {
@@ -444,7 +452,17 @@ function wireDeviceEvents(dev) {
     dev.addEffectParameterChangedListener((d, slot, paramNum, value) => {
       if (slot === selectedSlot) updateKnobDisplay(paramNum, value);
     });
-    dev.addTempoChangedListener((d, tempo) => { els.patchTempo.textContent = tempo; });
+    dev.addTempoChangedListener((d, tempo) => {
+      els.patchTempo.textContent = tempo;
+      // If a BPM block is selected its knob IS tempo: keep it in step with
+      // pedal knob turns and tap-tempo, both of which arrive as tempoV2.
+      const selEff = selectedSlot !== null ? d.currentPatch?.effectSettings?.[selectedSlot] : null;
+      if (!selEff || !isTempoBlockId(selEff.id)) return;
+      const knobEl = els.detailKnobs.querySelector(`.knob[data-param="0"]`);
+      if (!knobEl) return;
+      setKnobVisual(knobEl, tempo, Number(knobEl.dataset.max), Number(knobEl.dataset.min ?? 0));
+      knobEl.parentElement.querySelector(".knob-value").textContent = String(tempo);
+    });
     return;
   }
 
@@ -995,7 +1013,9 @@ async function addEffectToPatch(patch, effectId, slot) {
   if (info?.parameters) {
     for (let i = 0; i < info.parameters.length; i++) {
       const param = info.parameters[i];
-      settings.parameters[i] = param.default ?? 0;
+      // Without a default, fall back to the floor rather than 0 - a param
+      // like BPM (40-250) would otherwise be added out of range.
+      settings.parameters[i] = param.default ?? param.min ?? 0;
     }
   }
 
@@ -1033,9 +1053,18 @@ function renderKnobs(eff, info, slot) {
   // count. Effects we don't have a map for (fallback) still show
   // whatever the live patch reports, since that's all we know.
   const paramCount = info?.parameters?.length ?? eff.parameters.length;
+  // A BPM block's "parameter" is patch tempo (lives in PRM2), never the
+  // padded EDTB slot - the pedal itself stores 0 there (verified against a
+  // pedal-written dump), so read and write tempo instead.
+  const isTempoBlock = isTempoBlockId(eff.id);
   for (let paramIndex = 0; paramIndex < paramCount; paramIndex++) {
-    const value = eff.parameters[paramIndex];
+    const value = isTempoBlock
+      ? (device.currentTempo ?? device.currentPatch?.tempo ?? 0)
+      : eff.parameters[paramIndex];
     const paramInfo = info?.parameters?.[paramIndex];
+    // Parameters can declare a floor (the BPM block runs 40-250); without it
+    // the knob would happily send values below the pedal's own minimum.
+    const min = paramInfo?.min ?? 0;
     const max = paramInfo?.max ?? 127;
     const name = paramInfo?.name ?? `Param ${paramIndex + 1}`;
     const isUndocumented = /^hidden/i.test(name);
@@ -1046,19 +1075,26 @@ function renderKnobs(eff, info, slot) {
       ? "This is a real, controllable parameter that thammer's reverse-engineering found in the sysex protocol, but its actual function was never identified - likely because it's not shown on the pedal's own display either. Safe to experiment with; just know that neither this app nor the pedal can currently tell you what it does."
       : "";
     unit.innerHTML =
-      `<div class="knob" data-param="${paramIndex}" data-max="${max}"></div>` +
+      `<div class="knob" data-param="${paramIndex}" data-min="${min}" data-max="${max}"></div>` +
       `<div class="knob-name">${escapeHtml(name)}</div>` +
       `<div class="knob-value">${escapeHtml(displayValue(paramInfo, value))}</div>`;
     els.detailKnobs.appendChild(unit);
 
     const knobEl = unit.querySelector(".knob");
-    setKnobVisual(knobEl, value, max);
+    setKnobVisual(knobEl, value, max, min);
     wireKnobDrag(knobEl, {
-      min: 0,
+      min,
       max,
-      getValue: () => device.currentPatch.effectSettings[slot].parameters[paramIndex],
+      getValue: () => isTempoBlock
+        ? (device.currentTempo ?? device.currentPatch?.tempo ?? 0)
+        : device.currentPatch.effectSettings[slot].parameters[paramIndex],
       onChange: (newValue) => {
         unit.querySelector(".knob-value").textContent = displayValue(paramInfo, newValue);
+        if (isTempoBlock) {
+          // Live send; the header (and this knob) refresh via the tempo echo.
+          device.setTempoOnDevice(newValue);
+          return;
+        }
         device.setEffectParameterForCurrentPatch(slot, paramIndex + 2, newValue);
       },
     });
@@ -1078,8 +1114,9 @@ function updateKnobDisplay(paramNumber, value) {
   if (paramIndex < 0) return; // 0 = enable/bypass, 1 = effect id - not a knob
   const knobEl = els.detailKnobs.querySelector(`.knob[data-param="${paramIndex}"]`);
   if (!knobEl) return;
+  const min = Number(knobEl.dataset.min ?? 0);
   const max = Number(knobEl.dataset.max);
-  setKnobVisual(knobEl, value, max);
+  setKnobVisual(knobEl, value, max, min);
   const info = device?.currentPatch ? effectInfo(device.currentPatch.effectSettings[selectedSlot].id) : null;
   const paramInfo = info?.parameters?.[paramIndex];
   knobEl.parentElement.querySelector(".knob-value").textContent = displayValue(paramInfo, value);

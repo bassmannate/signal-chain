@@ -602,6 +602,45 @@ export class ZoomDevice {
         }
         this.emitEffectParameterChangedEvent();
     }
+    /**
+     * Sets the pedal's tempo on MS Plus series pedals.
+     *
+     * Tempo is not an effect parameter - it lives in the PRM2 chunk of the
+     * patch - but the pedal announces knob/tap changes as a parameterValueV2
+     * message ("64 20 00") addressed to effectSlot 100 (0x64), parameter 2,
+     * which is byte-identical to messageTypes.tempoV2 ("64 20 00 64 02")
+     * that the receive side decodes. Re-sending that message is therefore
+     * the write path: same framing, same 7-bit value pair.
+     * @param tempo BPM value (the pedal's own range is 40-250)
+     * @returns true when the message was sent
+     */
+    setTempoOnDevice(tempo) {
+        if (this._supportedCommands.get(ZoomDevice.messageTypes.parameterValueV2.str) !== SupportType.Supported) {
+            shouldLog(LogLevel.Warning) && console.warn(`setTempoOnDevice: parameterValueV2 is not supported by this pedal - use Sync to Pedal instead (the PRM2 chunk carries the tempo)`);
+            return false;
+        }
+        const value = Math.round(tempo);
+        const parameterBuffer = new Uint8Array(7);
+        parameterBuffer[0] = 100; // effectSlot 0x64: the pedal's tempo address
+        parameterBuffer[1] = 2;    // parameterNumber: matches tempoV2's "64 02"
+        parameterBuffer[2] = value & 0b01111111; // LSB
+        parameterBuffer[3] = (value >> 7) & 0b01111111; // MSB
+        const command = new Uint8Array(ZoomDevice.messageTypes.parameterValueV2.bytes.length + parameterBuffer.length);
+        command.set(ZoomDevice.messageTypes.parameterValueV2.bytes);
+        command.set(parameterBuffer, ZoomDevice.messageTypes.parameterValueV2.bytes.length);
+        this.sendCommand(command);
+        if (this.currentPatch !== undefined && this.currentPatch !== null) {
+            let patch = this.freezeCurrentPatch ? this.currentPatch.clone() : this.currentPatch;
+            patch.tempo = value; // Sync to Pedal then writes it into PRM2 as well
+            if (this.freezeCurrentPatch) {
+                this._currentPatch = patch;
+                Object.freeze(this._currentPatch);
+            }
+        }
+        this._currentTempo = value;
+        this.emitTempoChangedEvent();
+        return true;
+    }
     deleteScreenForEffectInSlot(effectSlot) {
         // Update screens
         if (this.currentScreenCollection !== undefined)

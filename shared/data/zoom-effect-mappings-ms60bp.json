@@ -40619,6 +40619,18 @@
       }
     ]
   },
+  "09000ff0": {
+    "name": "BPM",
+    "screenName": "BPM",
+    "parameters": [
+      {
+        "name": "BPM",
+        "min": 40,
+        "max": 250,
+        "default": 0
+      }
+    ]
+  },
   "0a000010": {
     "name": "Delay",
     "screenName": "Delay",

@@ -105,6 +105,7 @@ let idObject = {
     0x03000060: "Zen O.DRV",
     0x01000070: "ZNR",
     0x07000ff0: "BPM", // Added manually
+    0x09000ff0: "BPM", // Added manually
 };
 let zoomEffectIDsMS50GPlus = new Map(Object.entries(idObject).map(([key, value]) => [parseInt(key), value]));
 export default zoomEffectIDsMS50GPlus;

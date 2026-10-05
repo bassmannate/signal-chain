@@ -95430,5 +95430,17 @@
   "07000ff0": {
     "name": "BPM",
     "parameters": []
+  },
+  "09000ff0": {
+    "name": "BPM",
+    "screenName": "BPM",
+    "parameters": [
+      {
+        "name": "BPM",
+        "min": 40,
+        "max": 250,
+        "default": 0
+      }
+    ]
   }
 }

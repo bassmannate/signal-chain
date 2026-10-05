@@ -681,7 +681,13 @@ function buildIconInner(category, subtype, hash, info) {
 //   "05000000": `<rect x="3" y="6" width="18" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/>
 //                <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>`,
 export const EFFECT_ICON_OVERRIDES = {
-  // "hexid": `<svg markup>`,
+  // BPM / tap-tempo block (in the MS-60B+ effects group with Bomber and
+  // Fretless; believed present on other models too). Metronome: trapezoid
+  // case, base, pendulum with weight.
+  "09000ff0": `<path d="M8 21 L9.8 7 h4.4 L16 21 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
+    `<path d="M6.5 21 h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
+    `<path d="M12 19.5 L9.6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
+    `<circle cx="10.8" cy="14.3" r="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/>`,
 };
 
 export function iconSvgFor(modelNumberByte, id, info) {

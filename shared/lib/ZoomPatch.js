@@ -460,7 +460,14 @@ export class ZoomPatch {
     static createBPMSlotBits(effectSettings) {
         let bpmBits = 0;
         for (let i = 0; i < effectSettings.length; i++) {
-            if (effectSettings[i].id === 0x07000ff0) { // see zoom-effect-ids-ms70cdrp.ts, last effect in list
+            // Both variants of the BPM block claim a slot bit: the utility-
+            // section one (07000ff0, see zoom-effect-ids-ms70cdrp.ts) and the
+            // effects-section one (09000ff0, MS-60B+ chain dumps). Confirmed
+            // against a pedal-written patch: PRM2 byte22 bit1 set with the
+            // 09000ff0 block in slot 5, while this derivation (07-only)
+            // returned 0 and wiped the bit on the next write - leaving the
+            // pedal with no BPM screen. Same dual-id pattern as LineSel.
+            if (effectSettings[i].id === 0x07000ff0 || effectSettings[i].id === 0x09000ff0) {
                 bpmBits |= 1 << i;
             }
         }

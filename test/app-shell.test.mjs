@@ -198,4 +198,9 @@ test("app.js initialises and wires the transport and librarian controls", () => 
     "the auto-reopen toggle persists its setting");
   assert.equal(elementFor("knob-reverse-wheel").listenerCount("change"), 1,
     "the knob-only wheel polarity toggle is wired");
+  for (const id of ["btn-collision-overwrite", "btn-collision-skip", "btn-collision-cancel"]) {
+    assert.ok(elementFor(id), `${id} exists for the backup collision dialog`);
+  }
+  assert.ok(fs.readFileSync("web/file-api.js", "utf8").includes("listPickedDir"),
+    "the web backend must list a picked folder for the collision check");
 });

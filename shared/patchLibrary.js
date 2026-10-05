@@ -187,6 +187,55 @@ export function parseLibrary(text, opts = {}) {
   return validateLibraryObject(obj, opts);
 }
 
+// --- Backup collision check -------------------------------------------------
+//
+// Backup All writes one file per slot into a user-picked folder, and without
+// a check it silently overwrites same-named files (a re-run into last week's
+// folder, or two pedals sharing a folder). These pure helpers decide what
+// collides and what gets skipped, so the only question left for the UI is
+// the three-way choice: overwrite / skip existing / cancel. No DOM, no
+// fileAPI - the directory listing is handed in, which keeps this testable
+// and keeps the web shell (whose listing API differs) on the same logic.
+
+export const BACKUP_OVERWRITE = "overwrite";
+export const BACKUP_SKIP = "skip";
+export const BACKUP_CANCEL = "cancel";
+
+/**
+ * Which of the about-to-be-written file names already exist in the folder.
+ * Comparison is exact (case-sensitive): the names are machine-generated
+ * (`00_Name.zpatch`, `1A_Name.syx`), so a case-only difference is a genuinely
+ * different file on Linux and gets no special treatment here.
+ */
+export function findBackupCollisions(plannedFileNames, existingFileNames) {
+  const existing = new Set(existingFileNames ?? []);
+  return (plannedFileNames ?? []).filter((name) => existing.has(name));
+}
+
+/**
+ * The write plan once the user has chosen: overwrite writes everything,
+ * skip drops the colliding names, cancel writes nothing.
+ */
+export function planBackupWrites(plannedFileNames, collisions, choice) {
+  if (choice === BACKUP_CANCEL) return [];
+  if (choice === BACKUP_SKIP) {
+    const skip = new Set(collisions ?? []);
+    return (plannedFileNames ?? []).filter((name) => !skip.has(name));
+  }
+  return [...(plannedFileNames ?? [])];
+}
+
+/** One-line summary for the status bar after a skip-choice backup. */
+export function backupSkipSummary(wroteCount, skippedCount) {
+  if (skippedCount > 0 && wroteCount > 0) {
+    return `Backup complete: wrote ${wroteCount}, skipped ${skippedCount} already in the folder.`;
+  }
+  if (skippedCount > 0) {
+    return `Backup complete: all ${skippedCount} files were already in the folder, nothing written.`;
+  }
+  return `Backup complete: wrote ${wroteCount} files.`;
+}
+
 export function serializeLibrary(library) {
   return JSON.stringify(library, null, 2);
 }

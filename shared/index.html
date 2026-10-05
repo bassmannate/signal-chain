@@ -102,6 +102,18 @@
 
     </div>
 
+    <div id="backup-collision" class="modal-backdrop hidden">
+      <div class="modal" role="dialog" aria-labelledby="backup-collision-title">
+        <div id="backup-collision-title" class="modal-title">Files already exist</div>
+        <p id="backup-collision-text" class="modal-text"></p>
+        <div class="modal-buttons">
+          <button id="btn-collision-overwrite" class="btn btn-small" title="Replace the existing files with this backup">Overwrite</button>
+          <button id="btn-collision-skip" class="btn btn-small" title="Back up only the files that are not already there">Skip existing</button>
+          <button id="btn-collision-cancel" class="btn btn-small" title="Write nothing and go back">Cancel backup</button>
+        </div>
+      </div>
+    </div>
+
     <footer id="statusbar">
       <span id="status-text">Ready.</span>
       <span id="crc-indicator"></span>

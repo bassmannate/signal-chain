@@ -140,6 +140,22 @@
       throw new Error("listDir is not supported in the browser - pick a file to restore instead.");
     },
 
+    /**
+     * Names of the entries in an already-picked directory handle (from
+     * openDirectory). Read-only: Backup All intersects this with the names it
+     * is about to write, so re-running into last week's folder asks instead
+     * of silently overwriting. Iterating values() needs no extra permission -
+     * the user already granted readwrite on this handle.
+     */
+    async listPickedDir({ dirPath } = {}) {
+      const names = [];
+      if (!dirPath || typeof dirPath.values !== "function") return names;
+      for await (const entry of dirPath.values()) {
+        if (entry?.name) names.push(entry.name);
+      }
+      return names;
+    },
+
     async readFileInDir() {
       throw new Error("readFileInDir is not supported in the browser - pick a file to restore instead.");
     },

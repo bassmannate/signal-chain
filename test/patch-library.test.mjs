@@ -1,15 +1,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BACKUP_CANCEL,
+  BACKUP_OVERWRITE,
+  BACKUP_SKIP,
   DEVICE_KIND_POD,
   DEVICE_KIND_ZOOM,
   LIBRARY_EXTENSION,
   addToStash,
+  backupSkipSummary,
   clearLastLibraryForDevice,
   createLibrary,
   deviceKeyForAutoReopen,
   entryFromBytes,
   entryToBytes,
+  findBackupCollisions,
   getLastLibraryForDevice,
   hasPendingWork,
   hasStashableBytes,
@@ -17,6 +22,7 @@ import {
   loadAutoReopenSetting,
   parseLibrary,
   pendingWorkSummary,
+  planBackupWrites,
   saveAutoReopenSetting,
   serializeLibrary,
   setLastLibraryForDevice,
@@ -165,6 +171,48 @@ describe("patchLibrary bundle format", () => {
     assert.equal(getLastLibraryForDevice(storage, "zoom-plus:39"), null, "corrupt map reads as empty");
     storage.setItem("signal-chain.libLastByDevice", JSON.stringify({ "zoom-plus:39": { nope: 1 } }));
     assert.equal(getLastLibraryForDevice(storage, "zoom-plus:39"), null, "entry with no path/name/snapshot is ignored");
+  });
+
+  it("finds only this backup's files among the folder's contents", () => {
+    const planned = ["00_Lead.zpatch", "01_Clean.zpatch", "02_Bass.zpatch"];
+    assert.deepEqual(findBackupCollisions(planned, []), [], "empty folder: no prompt");
+    assert.deepEqual(
+      findBackupCollisions(planned, ["other-lib.patchlib.json", "notes.txt"]),
+      [],
+      "unrelated files are not collisions"
+    );
+    assert.deepEqual(
+      findBackupCollisions(planned, ["01_Clean.zpatch", "notes.txt"]),
+      ["01_Clean.zpatch"],
+      "only the overlapping planned name collides, in planned order"
+    );
+    assert.deepEqual(
+      findBackupCollisions(planned, planned),
+      planned,
+      "re-running into last week's folder collides on everything"
+    );
+    assert.deepEqual(findBackupCollisions(null, planned), []);
+    assert.deepEqual(findBackupCollisions(planned, null), []);
+  });
+
+  it("plans backup writes per the three-way choice", () => {
+    const planned = ["00_Lead.zpatch", "01_Clean.zpatch"];
+    assert.deepEqual(planBackupWrites(planned, ["01_Clean.zpatch"], BACKUP_OVERWRITE), planned);
+    assert.deepEqual(planBackupWrites(planned, ["01_Clean.zpatch"], BACKUP_SKIP), ["00_Lead.zpatch"]);
+    assert.deepEqual(planBackupWrites(planned, ["01_Clean.zpatch"], BACKUP_CANCEL), []);
+    assert.deepEqual(planBackupWrites(planned, [], BACKUP_SKIP), planned, "nothing collides: skip writes all");
+  });
+
+  it("summarizes skipped backups without alarming", () => {
+    assert.equal(backupSkipSummary(3, 0), "Backup complete: wrote 3 files.");
+    assert.equal(
+      backupSkipSummary(2, 1),
+      "Backup complete: wrote 2, skipped 1 already in the folder."
+    );
+    assert.equal(
+      backupSkipSummary(0, 3),
+      "Backup complete: all 3 files were already in the folder, nothing written."
+    );
   });
 
   it("describes what closing would lose", () => {

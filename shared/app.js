@@ -20,15 +20,20 @@ import {
   wireKnobDrag,
 } from "./ui/controls.js";
 import {
+  BACKUP_CANCEL,
+  BACKUP_OVERWRITE,
+  BACKUP_SKIP,
   DEVICE_KIND_POD,
   DEVICE_KIND_ZOOM,
   LIBRARY_EXTENSION,
   addToStash,
+  backupSkipSummary,
   clearLastLibraryForDevice,
   createLibrary,
   deviceKeyForAutoReopen,
   entryFromBytes,
   entryToBytes,
+  findBackupCollisions,
   getLastLibraryForDevice,
   hasPendingWork,
   hasStashableBytes,
@@ -36,6 +41,7 @@ import {
   loadAutoReopenSetting,
   parseLibrary,
   pendingWorkSummary,
+  planBackupWrites,
   saveAutoReopenSetting,
   serializeLibrary,
   setLastLibraryForDevice,
@@ -206,6 +212,11 @@ const els = {
   btnLibSaveAs: el("btn-lib-save-as"),
   btnLibClose: el("btn-lib-close"),
   btnLibNew: el("btn-lib-new"),
+  backupCollision: el("backup-collision"),
+  backupCollisionText: el("backup-collision-text"),
+  btnCollisionOverwrite: el("btn-collision-overwrite"),
+  btnCollisionSkip: el("btn-collision-skip"),
+  btnCollisionCancel: el("btn-collision-cancel"),
   libAutoReopen: el("lib-auto-reopen"),
   knobReverseWheel: el("knob-reverse-wheel"),
   panelWrap: el("panel-wrap"),
@@ -1858,7 +1869,7 @@ async function loadPodProgram() {
   status(ok ? `Loaded ${result.filePath} into the POD's edit buffer.` : "Could not send the program to the POD.", !ok);
 }
 
-async function backupPodPrograms(dirResult) {
+async function backupPodPrograms(dirResult, { skipSet } = {}) {
   status("Backing up all programs…");
   // One all-programs dump carries every name and every byte; per-slot reads
   // would work too but take 36 round trips for the same data.
@@ -1877,6 +1888,7 @@ async function backupPodPrograms(dirResult) {
     status(`Backing up [${i + 1}/${programs.length}]…`);
     const program = programs[i];
     const fileName = `${safeFileName(program.label, String(i))}_${safeFileName(program.name, `program_${i}`)}.syx`;
+    if (skipSet?.has(fileName)) continue;
     const data = buildProgramDump(i, bytes, version);
     // dirResult is null where there is no folder picker (Firefox/Safari) -
     // download each program instead so backup still works there.
@@ -1892,11 +1904,10 @@ async function backupPodPrograms(dirResult) {
     }
     saved++;
   }
-  if (saved > 0) {
-    status(dirResult
-      ? `Backed up ${saved} programs to ${dirResult.dirPath}`
-      : `Downloaded ${saved} programs - check your downloads folder.`);
-  } else status("No programs to back up.", true);
+  if (!dirResult) {
+    status(`Downloaded ${saved} programs - check your downloads folder.`);
+  }
+  return saved;
 }
 
 async function restorePodProgramToSlot(slot) {
@@ -1984,9 +1995,35 @@ async function backupAll() {
   const dirResult = await window.fileAPI.openDirectory();
   const useDir = !dirResult.canceled;
 
+  // Filenames embed the patch/program name, so without a check a same-named
+  // file already in the folder would be silently overwritten. Compute the
+  // planned names first (names only, cheap reads), intersect with the folder,
+  // and ask before any bytes are written. The no-picker fallback downloads
+  // into Downloads, where the browser's own dedup applies, so it skips this
+  // check entirely.
+  let skipSet = null;
+  let skippedCount = 0;
+  if (useDir) {
+    const planned = await plannedBackupFileNames();
+    const existing = await listBackupDir(dirResult);
+    const collisions = findBackupCollisions(planned, existing);
+    if (collisions.length > 0) {
+      const choice = await askBackupCollision(collisions);
+      if (choice === BACKUP_CANCEL) {
+        status("Backup canceled - nothing was written.");
+        return;
+      }
+      if (choice === BACKUP_SKIP) {
+        skippedCount = collisions.length;
+        skipSet = new Set(collisions);
+      }
+    }
+  }
+
   if (profile?.layout === "fixed-panel") {
     try {
-      await backupPodPrograms(useDir ? dirResult : null);
+      const wrote = await backupPodPrograms(useDir ? dirResult : null, { skipSet });
+      if (useDir) status(backupSkipSummary(wrote, skippedCount));
     } catch (e) {
       status("Backup failed: " + e.message, true);
     }
@@ -1997,6 +2034,11 @@ async function backupAll() {
   try {
     await device.updatePatchListFromPedal();
     const patches = device.patchList;
+    if (!patches) {
+      status("Backup is only available after the patch list loads.", true);
+      return;
+    }
+    let saved = 0;
     for (let i = 0; i < patches.length; i++) {
       status(`Backing up [${i + 1}/${patches.length}]…`);
       const patch = patches[i] ?? (await device.downloadPatchFromMemorySlot(i));
@@ -2005,6 +2047,7 @@ async function backupAll() {
       if (!data) continue;
       const name = safeFileName(patch.name, `patch_${i}`);
       const fileName = `${String(i).padStart(2, "0")}_${name}.zpatch`;
+      if (skipSet?.has(fileName)) continue;
       if (useDir) {
         await window.fileAPI.writeFileInDir({
           dirPath: dirResult.dirPath,
@@ -2015,13 +2058,85 @@ async function backupAll() {
       } else {
         await window.fileAPI.saveFile({ defaultPath: fileName, data, binary: true });
       }
+      saved++;
     }
     status(useDir
-      ? `Backed up ${patches.length} patches to ${dirResult.dirPath}`
+      ? backupSkipSummary(saved, skippedCount)
       : `Downloaded ${patches.length} patches - check your downloads folder.`);
   } catch (e) {
     status("Backup failed: " + e.message, true);
   }
+}
+
+/**
+ * File names this backup is about to write, with minimal pedal traffic: Zoom
+ * names come from the already-loaded patch list (no reads at all), POD names
+ * from one all-programs dump - the same dump the backup itself performs, so
+ * the check costs no extra traffic beyond what backing up already does.
+ */
+async function plannedBackupFileNames() {
+  if (profile?.layout === "fixed-panel") {
+    const programs = await device.requestProgramNames();
+    const list = programs ?? device.programs;
+    return list.map((program, i) =>
+      `${safeFileName(program.label, String(i))}_${safeFileName(program.name ?? `program_${i}`, `program_${i}`)}.syx`);
+  }
+  const patches = device.patchList ?? [];
+  return patches.map((patch, i) => {
+    const name = safeFileName(patch?.name, `patch_${i}`);
+    return `${String(i).padStart(2, "0")}_${name}.zpatch`;
+  });
+}
+
+/** Names already in the picked folder; [] when the shell cannot list it. */
+async function listBackupDir(dirResult) {
+  try {
+    if (typeof dirResult.dirPath === "string" && typeof window.fileAPI.listDir === "function") {
+      return await window.fileAPI.listDir({ dirPath: dirResult.dirPath });
+    }
+    if (typeof window.fileAPI.listPickedDir === "function") {
+      return await window.fileAPI.listPickedDir({ dirPath: dirResult.dirPath });
+    }
+  } catch (e) {
+    // Unlistable folder: proceed without the check rather than block backup.
+  }
+  return [];
+}
+
+/**
+ * Three-way collision question. Resolves BACKUP_OVERWRITE / BACKUP_SKIP /
+ * BACKUP_CANCEL; Cancel writes nothing. A modal HTML dialog rather than
+ * window.confirm so all three choices fit in one question - confirm() only
+ * offers two.
+ */
+function askBackupCollision(collisions) {
+  const shown = collisions.slice(0, 5).join(", ");
+  const more = collisions.length > 5 ? ` and ${collisions.length - 5} more` : "";
+  if (els.backupCollisionText) {
+    els.backupCollisionText.textContent =
+      `${collisions.length} ${collisions.length === 1 ? "file" : "files"} from this backup ` +
+      `(${shown}${more}) ${collisions.length === 1 ? "is" : "are"} already in the folder. ` +
+      `Overwrite replaces them; Skip backs up only the new files.`;
+  }
+  if (!els.backupCollision || !els.btnCollisionOverwrite) {
+    return Promise.resolve(BACKUP_OVERWRITE); // no dialog chrome: keep old behavior
+  }
+  return new Promise((resolve) => {
+    const done = (choice) => {
+      els.backupCollision.classList.add("hidden");
+      els.btnCollisionOverwrite.removeEventListener("click", onOverwrite);
+      els.btnCollisionSkip.removeEventListener("click", onSkip);
+      els.btnCollisionCancel.removeEventListener("click", onCancel);
+      resolve(choice);
+    };
+    const onOverwrite = () => done(BACKUP_OVERWRITE);
+    const onSkip = () => done(BACKUP_SKIP);
+    const onCancel = () => done(BACKUP_CANCEL);
+    els.btnCollisionOverwrite.addEventListener("click", onOverwrite);
+    els.btnCollisionSkip.addEventListener("click", onSkip);
+    els.btnCollisionCancel.addEventListener("click", onCancel);
+    els.backupCollision.classList.remove("hidden");
+  });
 }
 
 async function restoreToSlot() {

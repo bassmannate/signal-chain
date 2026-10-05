@@ -956,3 +956,43 @@ input { font-family: inherit; color: inherit; }
 }
 #knob-reverse-wheel-wrap:hover { color: var(--text-dim); }
 #knob-reverse-wheel-wrap input { accent-color: var(--accent-brass); cursor: pointer; }
+
+/* --- Modal dialog --------------------------------------------------------
+   Backup collision prompt: dim the app, float one question. Brass frame
+   (attention, nothing wrong); Overwrite is the dangerous action so it
+   carries the red treatment, Skip is the safe default. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel-raised);
+  border: 1px solid var(--accent-brass);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  max-width: 440px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.modal-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+.modal-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+#btn-collision-overwrite { color: var(--accent-red); }

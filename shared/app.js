@@ -1,4 +1,14 @@
 import { iconSvgFor, categorize } from "./effect-icons.js";
+import { getLogText, log, LogLevel, setLogLevel, getLogLevel, clearLogEntries } from "./lib/Logger.js";
+
+// Console helper for changing the log level (Option A): open DevTools and run
+//   Logger.setLogLevel(Logger.LogLevel.All)
+//   Logger.setLogLevel(Logger.LogLevel.Warning | Logger.LogLevel.Error)
+// Levels are a bitmask (Off=0, Error=1, Warning=2, Info=4, Debug=8, Midi=16),
+// so combined values select multiple severities at once.
+if (typeof window !== "undefined") {
+  window.Logger = { LogLevel, setLogLevel, getLogLevel, getLogText, clearLogEntries };
+}
 import { MIDIProxyForWebMIDIAPI } from "./lib/MIDIProxyForWebMIDIAPI.js";
 import { getMIDIDeviceList } from "./lib/miditools.js";
 import { findProfileFor, loadProfileData } from "./devices/profiles.js";
@@ -108,6 +118,51 @@ function saveKnobReverseWheel(storage, enabled) {
 let knobReverseWheelOn = loadKnobReverseWheel(appStorage());
 setKnobReverseWheel(knobReverseWheelOn);
 
+// --- Diagnostic log level -------------------------------------------------
+// The dropdown offers cumulative presets (each includes everything above it),
+// papering over the raw bitmask semantics in Logger.js (Off=0, Error=1,
+// Warning=2, Info=4, Debug=8, Midi=16, All=0xFFFFFFFF). Default stays bare
+// Warning per the agreed plan. Persisted like the other toggles above.
+const LOG_LEVEL_KEY = "signal-chain.logLevel";
+const LOG_LEVEL_PRESETS = {
+  off: LogLevel.Off,
+  error: LogLevel.Error,
+  warning: LogLevel.Warning,
+  info: LogLevel.Info | LogLevel.Warning | LogLevel.Error,
+  debug: LogLevel.Debug | LogLevel.Info | LogLevel.Warning | LogLevel.Error,
+  midi: LogLevel.Midi | LogLevel.Debug | LogLevel.Info | LogLevel.Warning | LogLevel.Error,
+  all: LogLevel.All,
+};
+const LOG_LEVEL_NAMES = {
+  [LogLevel.Off]: "Off",
+  [LogLevel.Error]: "Errors",
+  [LogLevel.Warning]: "Warnings",
+};
+function loadLogLevel(storage) {
+  try {
+    const raw = storage?.getItem?.(LOG_LEVEL_KEY);
+    if (raw && raw in LOG_LEVEL_PRESETS) return raw;
+  } catch (e) {
+    // Private-mode / quota failure: fall through to the default.
+  }
+  return "warning";
+}
+function saveLogLevel(storage, key) {
+  try {
+    storage?.setItem?.(LOG_LEVEL_KEY, key);
+  } catch (e) {
+    // Private-mode / quota failure: the selection just does not persist.
+  }
+}
+function presetKeyForLevel(level) {
+  for (const [key, mask] of Object.entries(LOG_LEVEL_PRESETS)) {
+    if (mask === level) return key;
+  }
+  return null;
+}
+let logLevelKey = loadLogLevel(appStorage());
+setLogLevel(LOG_LEVEL_PRESETS[logLevelKey]);
+
 /**
  * Identity of the connected pedal for auto-reopen. Zoom pedals share a
  * profile id, so the model byte is what keeps the MS-50G+ and MS-60B+
@@ -189,6 +244,8 @@ const els = {
   btnBackup: el("btn-backup"),
   btnSave: el("btn-save"),
   btnLoad: el("btn-load"),
+  btnExportLog: el("btn-export-log"),
+  logLevel: el("log-level"),
   patchList: el("patch-list"),
   sidebarHeader: el("sidebar-header"),
   chainEmpty: el("chain-empty"),
@@ -2217,6 +2274,37 @@ async function restoreToSlot() {
   }
 }
 
+async function exportLog() {
+  try {
+    log(LogLevel.Info, "app", "Exporting diagnostic log");
+    const text = getLogText();
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const result = await window.fileAPI.saveFile({
+      defaultPath: `Signal-Chain-log-${stamp}.txt`,
+      data: text || "(no log entries captured yet)",
+    });
+    if (result.canceled) {
+      status("Log export cancelled.");
+      return;
+    }
+    status(`Diagnostic log exported${result.filePath ? ` to ${result.filePath}` : ""}.`);
+  } catch (e) {
+    status("Could not export log: " + e.message, true);
+  }
+}
+
+function applyLogLevel(key, { announce = true } = {}) {
+  if (!(key in LOG_LEVEL_PRESETS)) return;
+  logLevelKey = key;
+  setLogLevel(LOG_LEVEL_PRESETS[key]);
+  saveLogLevel(appStorage(), key);
+  if (els.logLevel) els.logLevel.value = key;
+  if (announce) {
+    const label = LOG_LEVEL_NAMES[LOG_LEVEL_PRESETS[key]] ?? key;
+    status(`Log level: ${label}.`);
+  }
+}
+
 // --- Wire up buttons ---------------------------------------------------
 
 els.btnConnect.addEventListener("click", connect);
@@ -2227,6 +2315,11 @@ els.btnRestore.addEventListener("click", restoreToSlot);
 els.btnSave.addEventListener("click", savePatch);
 els.btnLoad.addEventListener("click", loadPatch);
 els.btnBackup.addEventListener("click", backupAll);
+els.btnExportLog.addEventListener("click", exportLog);
+if (els.logLevel) {
+  els.logLevel.value = logLevelKey;
+  els.logLevel.addEventListener("change", () => applyLogLevel(els.logLevel.value));
+}
 
 // Set up the chain as a drop zone for the effect library
 setupChainDropZone();

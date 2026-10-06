@@ -1,6 +1,6 @@
 import { MessageType } from "../lib/midiproxy.js";
 import { getChannelMessage } from "../lib/miditools.js";
-import { shouldLog, LogLevel } from "../lib/Logger.js";
+import { shouldLog, LogLevel, log } from "../lib/Logger.js";
 import {
     DUMP_TYPE_ALL_PROGRAMS,
     DUMP_TYPE_EDIT_BUFFER,
@@ -171,12 +171,12 @@ export class BassPodProDevice {
         try {
             await this._midi.closeInput(this._midiDevice.inputID);
         } catch (e) {
-            shouldLog(LogLevel.Info) && console.log(`BassPodProDevice.close() input: ${e.message}`);
+            log(LogLevel.Info, "BassPodProDevice", `BassPodProDevice.close() input: ${e.message}`);
         }
         try {
             await this._midi.closeOutput(this._midiDevice.outputID);
         } catch (e) {
-            shouldLog(LogLevel.Info) && console.log(`BassPodProDevice.close() output: ${e.message}`);
+            log(LogLevel.Info, "BassPodProDevice", `BassPodProDevice.close() output: ${e.message}`);
         }
         this._setIsOpen(false);
     }
@@ -425,7 +425,7 @@ export class BassPodProDevice {
             const entry = { type, resolve, timer: undefined };
             entry.timer = setTimeout(() => {
                 this._pendingDumps = this._pendingDumps.filter((p) => p !== entry);
-                shouldLog(LogLevel.Midi) && console.log(
+                log(LogLevel.Midi, "BassPodProDevice", 
                     `BassPodProDevice: no reply to sys-ex dump request type ${type} - is the POD listening on MIDI channel ${this.channel}?`);
                 resolve(undefined);
             }, this._timeoutFor(type));
@@ -446,7 +446,7 @@ export class BassPodProDevice {
         for (const byte of data) this._sysexBuffer.push(byte);
 
         if (this._sysexBuffer.length > SYSEX_BUFFER_LIMIT) {
-            shouldLog(LogLevel.Warn) && console.log("BassPodProDevice: dropping a sys-ex dump that never ended");
+            log(LogLevel.Warning, "BassPodProDevice", "BassPodProDevice: dropping a sys-ex dump that never ended");
             this._sysexBuffer = [];
             return;
         }
@@ -494,7 +494,7 @@ export class BassPodProDevice {
         const size = this._sysexLayout?.programByteCount ?? PROGRAM_BYTE_COUNT;
         const version = this._sysexLayout?.version ?? 1;
         if (parsed.version !== undefined && parsed.version !== version) {
-            shouldLog(LogLevel.Warn) && console.log(
+            log(LogLevel.Warning, "BassPodProDevice", 
                 `BassPodProDevice: dump says version ${parsed.version}, the field map in the profile is for ${version}`);
         }
 
@@ -507,7 +507,7 @@ export class BassPodProDevice {
         // A truncated dump is worse than no dump: it would read as a program
         // full of zeros, so drop it rather than report invented values.
         if (parsed.byteCount < size) {
-            shouldLog(LogLevel.Midi) && console.log(
+            log(LogLevel.Midi, "BassPodProDevice", 
                 `BassPodProDevice: ignoring a ${parsed.byteCount}-byte dump (expected ${size})`);
             return;
         }
@@ -575,7 +575,7 @@ export class BassPodProDevice {
             const sentAt = this._recentlySent.get(data1);
             if (sentAt !== undefined) {
                 if (this._now() - sentAt < ECHO_SUPPRESSION_MS) {
-                    shouldLog(LogLevel.Midi) && console.log(`BassPodProDevice: swallowed echo of CC ${data1} (${data2})`);
+                    log(LogLevel.Midi, "BassPodProDevice", `BassPodProDevice: swallowed echo of CC ${data1} (${data2})`);
                     return;
                 }
                 this._recentlySent.delete(data1);
@@ -591,7 +591,7 @@ export class BassPodProDevice {
             // is nothing to correct on screen - the app asked for this - and
             // passing it on would make the UI read the same program twice.
             if (data1 === this._lastSentProgramChange && this._now() - this._lastSentProgramChangeAt < ECHO_SUPPRESSION_MS) {
-                shouldLog(LogLevel.Midi) && console.log(`BassPodProDevice: swallowed echo of program change ${data1}`);
+                log(LogLevel.Midi, "BassPodProDevice", `BassPodProDevice: swallowed echo of program change ${data1}`);
                 return;
             }
             // The POD's own program buttons and footswitches send this, so it is

@@ -184,9 +184,10 @@ globalThis.navigator = {
 await import("../shared/app.js");
 
 test("app.js initialises and wires the transport and librarian controls", () => {
-  for (const id of ["btn-connect", "btn-sync", "btn-restore", "btn-backup", "btn-save", "btn-load"]) {
+  for (const id of ["btn-connect", "btn-sync", "btn-restore", "btn-backup", "btn-save", "btn-load", "btn-export-log"]) {
     assert.equal(elementFor(id).listenerCount("click"), 1, id);
   }
+  assert.equal(elementFor("log-level").listenerCount("change"), 1, "log-level");
   for (const id of ["btn-lib-new", "btn-lib-open", "btn-lib-save", "btn-lib-save-as", "btn-lib-close"]) {
     assert.equal(elementFor(id).listenerCount("click"), 1, id);
   }
@@ -203,4 +204,13 @@ test("app.js initialises and wires the transport and librarian controls", () => 
   }
   assert.ok(fs.readFileSync("web/file-api.js", "utf8").includes("listPickedDir"),
     "the web backend must list a picked folder for the collision check");
+});
+
+test("app.js exposes a console helper for changing the log level", () => {
+  for (const key of ["LogLevel", "setLogLevel", "getLogLevel", "getLogText", "clearLogEntries"]) {
+    assert.equal(typeof globalThis.window.Logger?.[key] === "function" || typeof globalThis.window.Logger?.[key] === "object", true, `window.Logger.${key}`);
+  }
+  assert.equal(typeof globalThis.window.Logger.LogLevel.All, "number", "LogLevel enum is exposed");
+  globalThis.window.Logger.setLogLevel(globalThis.window.Logger.LogLevel.All);
+  assert.equal(globalThis.window.Logger.getLogLevel(), globalThis.window.Logger.LogLevel.All);
 });

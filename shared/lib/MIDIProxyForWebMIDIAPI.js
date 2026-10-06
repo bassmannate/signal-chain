@@ -1,4 +1,4 @@
-import { shouldLog, LogLevel } from "./Logger.js";
+import { LogLevel, log } from "./Logger.js";
 import { MIDIProxy, ALL_MIDI_DEVICES } from "./midiproxy.js";
 import { getChannelMessage } from "./miditools.js";
 import { MIDI_RECEIVE, MIDI_RECEIVE_TO_SEND, MIDI_SEND, MIDI_TIMESTAMP_TO_RECEIVE, perfmon } from "./PerformanceMonitor.js";
@@ -46,7 +46,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
             return true;
         }
         catch (err) {
-            shouldLog(LogLevel.Error) && console.error("ERROR: Error while enabling Web MIDI API");
+            log(LogLevel.Error, "MIDIProxyForWebMIDIAPI", "ERROR: Error while enabling Web MIDI API");
             throw err;
         }
     }
@@ -106,7 +106,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
             throw `Attempting to close MIDI input without first enabling Web MIDI`;
         let input = this.midi.inputs.get(deviceHandle);
         if (input === undefined) {
-            shouldLog(LogLevel.Info) && console.log(`No input found with ID "${deviceHandle}", so there's nothing to close. Removing listeners anyway.`);
+            log(LogLevel.Info, "MIDIProxyForWebMIDIAPI", `No input found with ID "${deviceHandle}", so there's nothing to close. Removing listeners anyway.`);
         }
         else {
             await input.close();
@@ -155,7 +155,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
             throw `Attempting to close MIDI output without first enabling Web MIDI`;
         let output = this.midi.outputs.get(deviceHandle);
         if (output === undefined) {
-            shouldLog(LogLevel.Info) && console.log(`No output found with ID "${deviceHandle}", so there's nothing to close`);
+            log(LogLevel.Info, "MIDIProxyForWebMIDIAPI", `No output found with ID "${deviceHandle}", so there's nothing to close`);
         }
         else {
             await output.close();
@@ -213,7 +213,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
         // Note: This conversion might be needed for node.js, but is not needed for the browser based Web MIDI API
         //let dataArray = Array.from(data);
         let dataArray = data;
-        shouldLog(LogLevel.Midi) && console.log(`${performance.now().toFixed(1)} Sent: ${bytesToHexString(dataArray, " ")}`);
+        log(LogLevel.Midi, "MIDIProxyForWebMIDIAPI", `${performance.now().toFixed(1)} Sent: ${bytesToHexString(dataArray, " ")}`);
         perfmon.enter(MIDI_SEND);
         output.send(dataArray);
         perfmon.exit(MIDI_SEND);
@@ -240,7 +240,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
                 throw `Attempting to get midi event listener for device "${deviceHandle}" without first enabling Web MIDI`;
             let input = this.midi.inputs.get(deviceHandle);
             if (input === undefined) {
-                shouldLog(LogLevel.Info) && console.log(`No input found with ID "${deviceHandle}". Removing listener anyway.`);
+                log(LogLevel.Info, "MIDIProxyForWebMIDIAPI", `No input found with ID "${deviceHandle}". Removing listener anyway.`);
             }
         }
         let listeners = this.midiMessageListenerMap.get(deviceHandle);
@@ -269,7 +269,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
     addConnectionListener(listener) {
         let existingListener = this.connectionStateChangeListeners.find((l) => l === listener);
         if (existingListener !== undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to add a connection listener twice`);
+            log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", `Attempting to add a connection listener twice`);
         }
         else {
             this.connectionStateChangeListeners.push(listener);
@@ -278,7 +278,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
     removeConnectionListener(listener) {
         let existingListener = this.connectionStateChangeListeners.find((l) => l === listener);
         if (existingListener === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to remove a connection listener that hasn't been added`);
+            log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", `Attempting to remove a connection listener that hasn't been added`);
         }
         else {
             this.connectionStateChangeListeners = this.connectionStateChangeListeners.filter((l) => l === listener);
@@ -286,7 +286,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
     }
     onMIDIMessage(deviceHandle, input, message) {
         if (message.data === null) {
-            shouldLog(LogLevel.Warning) && console.warn("message.data == null");
+            log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", "message.data == null");
             return;
         }
         let mute = false;
@@ -309,7 +309,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
                 if (message.data !== null)
                     listener(deviceHandle, message.data, message.timeStamp);
                 else
-                    shouldLog(LogLevel.Warning) && console.warn("message.data == null");
+                    log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", "message.data == null");
             }
         }
         // then, call listeners that listen for this specific device
@@ -320,7 +320,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
             if (message.data !== null)
                 listener(deviceHandle, message.data, message.timeStamp);
             else
-                shouldLog(LogLevel.Warning) && console.warn("message.data == null");
+                log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", "message.data == null");
         }
     }
     /**
@@ -340,7 +340,7 @@ export class MIDIProxyForWebMIDIAPI extends MIDIProxy {
                 listener(deviceHandle, portType, state);
             }
             else
-                shouldLog(LogLevel.Warning) && console.warn("event.port === null");
+                log(LogLevel.Warning, "MIDIProxyForWebMIDIAPI", "event.port === null");
         }
     }
 }

@@ -1,4 +1,4 @@
-import { shouldLog, LogLevel } from "./Logger.js";
+import { LogLevel, log } from "./Logger.js";
 /**
  * Add some extra IDs for MS-60B effects.
  * @param mapForMSOG
@@ -37,12 +37,12 @@ export function extendMSOGMapWithMS60BEffects(mapForMSOG) {
         let ms60bID = parseInt(ms60bIDString, 16);
         let parameterMap = mapForMSOG.get(msogID);
         if (parameterMap === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`No mapping for MS-OG ID ${msogIDString}`);
+            log(LogLevel.Warning, "ZoomEffectMaps", `No mapping for MS-OG ID ${msogIDString}`);
             continue;
         }
         let controlMap = mapForMSOG.get(ms60bID);
         if (controlMap !== undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`Duplicate mapping found for MS-60B ID ${ms60bIDString}`);
+            log(LogLevel.Warning, "ZoomEffectMaps", `Duplicate mapping found for MS-60B ID ${ms60bIDString}`);
             continue;
         }
         mapForMSOG.set(ms60bID, parameterMap);
@@ -112,7 +112,7 @@ export function replaceEffectNamesInMap(effectIDMap, nameMap) {
         let newName = nameMap.get(id);
         if (newName === undefined) {
             if (id !== 0x07000ff0) // silently ignore the BPM effect
-                shouldLog(LogLevel.Warning) && console.warn(`ID ${id.toString(16).padStart(8, "0")} ("${effectName}") from effectIDMap was not found in nameMap`);
+                log(LogLevel.Warning, "ZoomEffectMaps", `ID ${id.toString(16).padStart(8, "0")} ("${effectName}") from effectIDMap was not found in nameMap`);
         }
         else {
             // shouldLog(LogLevel.Info) && console.log(`Replacing effect name in effect ${id.toString(16).padStart(8, "0")}: ${effectName} -> ${newName}`);

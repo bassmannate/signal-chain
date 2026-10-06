@@ -1,4 +1,4 @@
-import { shouldLog, LogLevel } from "./Logger.js";
+import { LogLevel, log } from "./Logger.js";
 import { compareBuffers, getNumberFromBits, partialArrayStringMatch, setBitsFromNumber } from "./tools.js";
 /**
  * Settings for one effect slot in a Zoom patch.
@@ -188,19 +188,19 @@ export class ZoomPatch {
     }
     swapEffectsInSlots(effectSlot1, effectSlot2) {
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`Attempted to swap effects in slots ${effectSlot1} and ${effectSlot2} when effectSettings is null`);
+            log(LogLevel.Error, "ZoomPatch", `Attempted to swap effects in slots ${effectSlot1} and ${effectSlot2} when effectSettings is null`);
             return;
         }
         if (effectSlot1 < 0 || effectSlot1 >= this.effectSettings.length) {
-            shouldLog(LogLevel.Error) && console.error(`effectSlot1 ${effectSlot1} out of range: [0, ${this.effectSettings.length - 1}]`);
+            log(LogLevel.Error, "ZoomPatch", `effectSlot1 ${effectSlot1} out of range: [0, ${this.effectSettings.length - 1}]`);
             return;
         }
         if (effectSlot2 < 0 || effectSlot2 >= this.effectSettings.length) {
-            shouldLog(LogLevel.Error) && console.error(`effectSlot2 ${effectSlot2} out of range: [0, ${this.effectSettings.length - 1}]`);
+            log(LogLevel.Error, "ZoomPatch", `effectSlot2 ${effectSlot2} out of range: [0, ${this.effectSettings.length - 1}]`);
             return;
         }
         if (effectSlot1 === effectSlot2) {
-            shouldLog(LogLevel.Error) && console.error(`Cannot swap 2 identical effect slots ${effectSlot1}`);
+            log(LogLevel.Error, "ZoomPatch", `Cannot swap 2 identical effect slots ${effectSlot1}`);
             return;
         }
         let tempEffectSettings = this.effectSettings[effectSlot2];
@@ -240,11 +240,11 @@ export class ZoomPatch {
     }
     deleteEffectInSlot(effectSlot) {
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempted to delete effect from slot ${effectSlot} when effectSettings is null`);
+            log(LogLevel.Warning, "ZoomPatch", `Attempted to delete effect from slot ${effectSlot} when effectSettings is null`);
             return;
         }
         if (effectSlot < 0 || effectSlot >= this.effectSettings.length) {
-            shouldLog(LogLevel.Warning) && console.warn(`effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length - 1}]`);
+            log(LogLevel.Warning, "ZoomPatch", `effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length - 1}]`);
             return;
         }
         if (this.effectSettings.length === 1) {
@@ -324,11 +324,11 @@ export class ZoomPatch {
      */
     addEffectInSlot(effectSlot, effectSettings) {
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`Attempted to delete effect from slot ${effectSlot} when effectSettings is null`);
+            log(LogLevel.Error, "ZoomPatch", `Attempted to delete effect from slot ${effectSlot} when effectSettings is null`);
             return;
         }
         if (effectSlot < 0 || effectSlot > this.effectSettings.length) {
-            shouldLog(LogLevel.Error) && console.error(`effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length}]`);
+            log(LogLevel.Error, "ZoomPatch", `effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length}]`);
             return;
         }
         if (this.effectSettings.length === this.maxNumEffects) {
@@ -337,12 +337,12 @@ export class ZoomPatch {
                 // We'll accept adding effects beyond the 6 effect settings slots and then trim to length maxNumEffects (typically 6) afterwards, see below
             }
             else {
-                shouldLog(LogLevel.Error) && console.error(`Attempted to add effect in slot ${effectSlot} when all ${this.maxNumEffects} slots are full already`);
+                log(LogLevel.Error, "ZoomPatch", `Attempted to add effect in slot ${effectSlot} when all ${this.maxNumEffects} slots are full already`);
                 return;
             }
         }
         if (this.effectSettings.length === 0)
-            shouldLog(LogLevel.Warning) && console.warn(`${this.name}: this.effectSettings.length === 0. An empty patch should have one effect (slot 0) with ID 0 and all params 0`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.name}: this.effectSettings.length === 0. An empty patch should have one effect (slot 0) with ID 0 and all params 0`);
         let addEffectToEmptyPatch = effectSlot === 0 && this.effectSettings.length === 1 && this.effectSettings[0].id === 0;
         if (addEffectToEmptyPatch) {
             // An empty patch has one effect (slot 0) with ID 0 and all params 0
@@ -353,7 +353,7 @@ export class ZoomPatch {
             if (this.effectSettings.length > this.maxNumEffects) {
                 this.effectSettings.splice(this.maxNumEffects, this.effectSettings.length - this.maxNumEffects); // trim to maxNumEffects (typically 6)
                 if (this.msogEffectsReversedBytes === null)
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.name}: this.effectSettings.length > this.maxNumEffects but this isn't a MSOG patch. Investigate.`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.name}: this.effectSettings.length > this.maxNumEffects but this isn't a MSOG patch. Investigate.`);
             }
         }
         // Update IDs
@@ -418,11 +418,11 @@ export class ZoomPatch {
    */
     changeEffectInSlot(effectSlot, effectSettings) {
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`Attempted to change effect in slot ${effectSlot} when effectSettings is null`);
+            log(LogLevel.Error, "ZoomPatch", `Attempted to change effect in slot ${effectSlot} when effectSettings is null`);
             return;
         }
         if (effectSlot < 0 || effectSlot >= this.effectSettings.length) {
-            shouldLog(LogLevel.Error) && console.error(`effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length}]`);
+            log(LogLevel.Error, "ZoomPatch", `effectSlot ${effectSlot} out of range: [0, ${this.effectSettings.length}]`);
             return;
         }
         this.effectSettings[effectSlot] = effectSettings;
@@ -612,7 +612,7 @@ export class ZoomPatch {
             else
                 patch[propertyName] = property;
         }
-        shouldLog(LogLevel.Info) && console.log(`**** Cloned patch ${patch.name}`);
+        log(LogLevel.Info, "ZoomPatch", `**** Cloned patch ${patch.name}`);
         return patch;
     }
     readString(patch, offset, length) {
@@ -628,11 +628,11 @@ export class ZoomPatch {
         if (enforceBufferLength == -1)
             enforceBufferLength = str.length;
         if (offset + enforceBufferLength > data.length) {
-            shouldLog(LogLevel.Error) && console.error(`Not enough space in data buffer for the given string ("${str}"). data.length = ${data.length}, offset = ${offset}, str.length = ${str.length}, enforceBufferLength = ${enforceBufferLength}`);
+            log(LogLevel.Error, "ZoomPatch", `Not enough space in data buffer for the given string ("${str}"). data.length = ${data.length}, offset = ${offset}, str.length = ${str.length}, enforceBufferLength = ${enforceBufferLength}`);
             return 0;
         }
         if (str.length > enforceBufferLength) {
-            shouldLog(LogLevel.Error) && console.error(`String length > enforceBufferLength. str.length = ${str.length}, enforceBufferLength = ${enforceBufferLength}`);
+            log(LogLevel.Error, "ZoomPatch", `String length > enforceBufferLength. str.length = ${str.length}, enforceBufferLength = ${enforceBufferLength}`);
             return 0;
         }
         for (let i = 0; i < enforceBufferLength; i++)
@@ -646,7 +646,7 @@ export class ZoomPatch {
     }
     writeInt32(data, offset, int) {
         if (offset + 4 > data.length) {
-            shouldLog(LogLevel.Error) && console.error(`Not enough space in data buffer to store 32 bit int ("${int}"). data.length = ${data.length}, offset = ${offset}, bytes needed = 4`);
+            log(LogLevel.Error, "ZoomPatch", `Not enough space in data buffer to store 32 bit int ("${int}"). data.length = ${data.length}, offset = ${offset}, bytes needed = 4`);
             return 0;
         }
         data[offset] = int & 0x000000FF;
@@ -670,13 +670,13 @@ export class ZoomPatch {
     }
     writeInt32Array(data, offset, array) {
         if (offset + array.length > data.length) {
-            shouldLog(LogLevel.Error) && console.error(`Not enough space in data buffer to store Int32 array. data.length = ${data.length}, offset = ${offset}, array.length = ${array.length}`);
+            log(LogLevel.Error, "ZoomPatch", `Not enough space in data buffer to store Int32 array. data.length = ${data.length}, offset = ${offset}, array.length = ${array.length}`);
             return 0;
         }
         for (let i = 0; i < array.length; i++) {
             let result = this.writeInt32(data, offset, array[i]);
             if (result === 0) {
-                shouldLog(LogLevel.Error) && console.error(`Storing Int32 array failed. data.length = ${data.length}, offset = ${offset}, array.length = ${array.length}`);
+                log(LogLevel.Error, "ZoomPatch", `Storing Int32 array failed. data.length = ${data.length}, offset = ${offset}, array.length = ${array.length}`);
                 return 0;
             }
             offset = result;
@@ -685,7 +685,7 @@ export class ZoomPatch {
     }
     writeSlice(data, offset, slice) {
         if (offset + slice.length > data.length) {
-            shouldLog(LogLevel.Error) && console.error(`Not enough space in data buffer to store slice. data.length = ${data.length}, offset = ${offset}, slice.length = ${slice.length}`);
+            log(LogLevel.Error, "ZoomPatch", `Not enough space in data buffer to store slice. data.length = ${data.length}, offset = ${offset}, slice.length = ${slice.length}`);
             return 0;
         }
         data.set(slice, offset);
@@ -698,38 +698,38 @@ export class ZoomPatch {
         let chunkData;
         let initialOffset = offset;
         if (this.length === null) {
-            shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() this.length === null`);
+            log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() this.length === null`);
             return offset;
         }
         while (offset - initialOffset < remainingPatchLength) {
             if (offset - initialOffset + 8 > remainingPatchLength) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() individual chunk lengths do not match total PTCF chunk length`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() individual chunk lengths do not match total PTCF chunk length`);
                 break;
             }
             chunkID = this.readString(patch, offset, 4);
             offset += 4;
             if (chunkID === null) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() failed to read chunk ID from data`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() failed to read chunk ID from data`);
                 break;
             }
             chunkLength = this.readInt32(patch, offset);
             offset += 4;
             if (chunkLength === null) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() failed to read chunk length for chunk with ID "${chunkID}"`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() failed to read chunk length for chunk with ID "${chunkID}"`);
                 break;
             }
             if (chunkLength < 0 || chunkLength > maxChunkLength) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() Invalid chunk length (${chunkLength}) for chunk "${chunkID}", maxChunkLength = ${maxChunkLength}`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() Invalid chunk length (${chunkLength}) for chunk "${chunkID}", maxChunkLength = ${maxChunkLength}`);
                 break;
             }
             if (offset - initialOffset + chunkLength > this.length) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() offset (${offset}) - initialOffset (${initialOffset}) + chunk length (${chunkLength}) > total patch length (${this.length}) for chunk with ID "${chunkID}"`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() offset (${offset}) - initialOffset (${initialOffset}) + chunk length (${chunkLength}) > total patch length (${this.length}) for chunk with ID "${chunkID}"`);
                 break;
             }
             chunkData = patch.slice(offset, offset + chunkLength);
             offset += chunkLength;
             if (this.chunks.has(chunkID)) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() duplicate chunk ID "${chunkID}" in patch data`);
+                log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() duplicate chunk ID "${chunkID}" in patch data`);
                 break;
             }
             this.chunks.set(chunkID, chunkData);
@@ -739,20 +739,20 @@ export class ZoomPatch {
     readPTCF(data, offset) {
         let ptcfChunkStart = offset;
         if (data.length - offset < 8) {
-            shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() got patch data with no space for chunks after offset - patch.length = ${data.length}, offset = ${offset}`);
+            log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() got patch data with no space for chunks after offset - patch.length = ${data.length}, offset = ${offset}`);
             return offset;
         }
         const initialDataOffset = offset;
         this.PTCF = this.readString(data, offset, 4);
         offset += 4;
         if (this.PTCF !== "PTCF") {
-            shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() got patch data that doesn't start with ID "PTCF" - ID = ${this.PTCF}`);
+            log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() got patch data that doesn't start with ID "PTCF" - ID = ${this.PTCF}`);
             return offset;
         }
         this.length = this.readInt32(data, offset);
         offset += 4;
         if (this.length === null || this.length > data.length - initialDataOffset) {
-            shouldLog(LogLevel.Warning) && console.warn(`ZoomPatch.readPTCFChunks() PTCF chunk length (${this.length}) is greater than patch length (${data.length}) - offset (${offset})`);
+            log(LogLevel.Warning, "ZoomPatch", `ZoomPatch.readPTCFChunks() PTCF chunk length (${this.length}) is greater than patch length (${data.length}) - offset (${offset})`);
             return offset;
         }
         this.maxNumEffects = 6; // FIXME add support for other pedals, like MS-60B with 4 effects. See FIXME below on msogNumEffects.
@@ -779,7 +779,7 @@ export class ZoomPatch {
         const lengthOfPTCFIDAndLengthBytes = 4 + 4;
         offset = this.readPTCFChunks(data, offset, this.length - lengthOfPTCFIDAndLengthBytes - (offset - initialOffset));
         if (offset - initialOffset != this.length - lengthOfPTCFIDAndLengthBytes) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() offset mismatch after reading chunks. offset (${offset}) - initialOffset (${initialOffset}) != total PTCF chunk length (${this.length})`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() offset mismatch after reading chunks. offset (${offset}) - initialOffset (${initialOffset}) != total PTCF chunk length (${this.length})`);
         }
         let chunkData;
         let chunkID;
@@ -787,7 +787,7 @@ export class ZoomPatch {
         chunkID = "TXJ1";
         chunkData = this.chunks.get(chunkID);
         if (chunkData === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
         }
         else {
             chunkOffset = 0;
@@ -801,7 +801,7 @@ export class ZoomPatch {
         chunkID = "TXE1";
         chunkData = this.chunks.get(chunkID);
         if (chunkData === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
         }
         else {
             chunkOffset = 0;
@@ -833,14 +833,14 @@ export class ZoomPatch {
         chunkID = "EDTB";
         chunkData = this.chunks.get(chunkID);
         if (chunkData === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
         }
         else {
             chunkOffset = 0;
             this.EDTB = chunkID;
             this.edtbLength = chunkData.length;
             if (this.numEffects === null) {
-                shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() this.numEffects === null, but EDTB chunk has length ${chunkData.length}`);
+                log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() this.numEffects === null, but EDTB chunk has length ${chunkData.length}`);
             }
             else {
                 this.edtbReversedBytes = new Array(this.numEffects);
@@ -875,7 +875,7 @@ export class ZoomPatch {
                         let parameter = getNumberFromBits(this.edtbReversedBytes[i], bitpos - 7, bitpos);
                         bitpos -= 7;
                         if (parameter !== 0) {
-                            shouldLog(LogLevel.Warning) && console.warn(`Byte at edtbReversedBytes[${i}] bitpos ${bitpos} !== 0`);
+                            log(LogLevel.Warning, "ZoomPatch", `Byte at edtbReversedBytes[${i}] bitpos ${bitpos} !== 0`);
                         }
                     }
                 }
@@ -884,7 +884,7 @@ export class ZoomPatch {
         chunkID = "PRM2";
         chunkData = this.chunks.get(chunkID);
         if (chunkData === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
         }
         else {
             chunkOffset = 0;
@@ -954,16 +954,16 @@ export class ZoomPatch {
                 }
                 let individualChecksFailed = false;
                 if (!(individualChecksFailed = individualChecksFailed || this.verifyPrm2EffectSlotBits())) {
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2EffectSlotBits() failed. This is known to happen when deleting effects from a slot on the pedal.`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2EffectSlotBits() failed. This is known to happen when deleting effects from a slot on the pedal.`);
                 }
                 if (!(individualChecksFailed = individualChecksFailed || this.verifyPrm2PreampSlotBits()))
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2PreampSlotBits() failed`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2PreampSlotBits() failed`);
                 if (!(individualChecksFailed = individualChecksFailed || this.verifyPrm2BPMSlotBits()))
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2BPMSlotBits() failed`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2BPMSlotBits() failed`);
                 if (!(individualChecksFailed = individualChecksFailed || this.verifyPrm2LineSelSlotBits()))
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2LineSelSlotBits() failed`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2LineSelSlotBits() failed`);
                 if ((!individualChecksFailed) && this.verifyPrm2Buffer())
-                    shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2Buffer() failed.`);
+                    log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2Buffer() failed.`);
                 /*
                 o prm2 unknown byte 9 is always 0x80. But scanning through patches on MS-50G+ gives 1 anomaly (warning) for this,
                   Krampus drive patch, first patch or copies of first patch on MS-50G+. This could perhaps just be a small bug/mistake from Zoom
@@ -993,7 +993,7 @@ export class ZoomPatch {
         chunkID = "NAME";
         chunkData = this.chunks.get(chunkID);
         if (chunkData === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: ZoomPatch.readPTCF() chunk ID "${chunkID} not found in patch data - this.chunks.size = ${this.chunks.size}`);
         }
         else {
             chunkOffset = 0;
@@ -1032,7 +1032,7 @@ export class ZoomPatch {
             prm2Buffer.fill(0, 0, prm2Length);
         if (prm2Length > 2) {
             if ((prm2Buffer[prm2Length - 2] & 0b00001111) != 0) {
-                shouldLog(LogLevel.Warning) && console.warn(`Lower 4 bits of prm2Buffer[prm2Length - 2] should be 0 but was ${prm2Buffer[prm2Length - 2] & 0b00001111}`);
+                log(LogLevel.Warning, "ZoomPatch", `Lower 4 bits of prm2Buffer[prm2Length - 2] should be 0 but was ${prm2Buffer[prm2Length - 2] & 0b00001111}`);
             }
             // FIXME: Investigate if I should be more careful with setting the tempo bits
             // let tempo1 = this.prm2Buffer[this.prm2Buffer.length -2];
@@ -1120,14 +1120,14 @@ export class ZoomPatch {
     buildPTCFChunk(nameLength = 0) {
         this.updatePatchPropertiesFromDerivedProperties();
         if (this.PTCF === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. PTCF == null`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. PTCF == null`);
             return undefined;
         }
         // TXJ1 chunk (japanese description) is assumed to be unchanged
         let txj1TotalLength = 0;
         if (this.TXJ1 !== null) {
             if (this.txj1Length === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. TXJ1 != null, txj1Length == null.`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. TXJ1 != null, txj1Length == null.`);
                 return undefined;
             }
             txj1TotalLength = 4 + 4 + this.txj1Length;
@@ -1136,7 +1136,7 @@ export class ZoomPatch {
         let txe1TotalLength = 0;
         if (this.TXE1 !== null) {
             if (this.txe1Length === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. TXE1 != null, txe1Length == null. `);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. TXE1 != null, txe1Length == null. `);
                 return undefined;
             }
             txe1TotalLength = 4 + 4 + this.txe1Length;
@@ -1145,7 +1145,7 @@ export class ZoomPatch {
         let edtbTotalLength = 0;
         if (this.EDTB !== null) {
             if (this.edtbLength === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. EDTB != null, edtbLength == null. `);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. EDTB != null, edtbLength == null. `);
                 return undefined;
             }
             edtbTotalLength = 4 + 4 + this.edtbLength;
@@ -1154,7 +1154,7 @@ export class ZoomPatch {
         let prm2TotalLength = 0;
         if (this.PRM2 !== null) {
             if (this.prm2Length === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. PRM2 != null, prm2Length == null. `);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. PRM2 != null, prm2Length == null. `);
                 return undefined;
             }
             prm2TotalLength = 4 + 4 + this.prm2Length;
@@ -1166,13 +1166,13 @@ export class ZoomPatch {
         let nameTotalLength = 0;
         if (this.NAME !== null) {
             if (this.nameLength === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. NAME != null, nameLength == null. `);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. NAME != null, nameLength == null. `);
                 return undefined;
             }
             nameTotalLength = 4 + 4 + this.nameLength;
         }
         if (this.ids === null || this.numEffects === null || this.ids.length !== this.numEffects) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. ids = ${this.ids}, numEffects = ${this.numEffects}, ids.length = ${this.ids?.length}, ids.length != numEffects `);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. ids = ${this.ids}, numEffects = ${this.numEffects}, ids.length = ${this.ids?.length}, ids.length != numEffects `);
             return undefined;
         }
         let ptcfToplevelDataLength = 4 + // version = 4 bytes
@@ -1188,15 +1188,15 @@ export class ZoomPatch {
         let success = true;
         // Toplevel data in the PTCF chunk
         if (this.version === null || this.target === null || this.ptcfUnknown === null || this.ptcfShortName === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. version = ${this.version}, target = ${this.target}, ptchUnknown = ${this.ptcfUnknown}, ptchShortName = ${this.ptcfShortName}`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. version = ${this.version}, target = ${this.target}, ptchUnknown = ${this.ptcfUnknown}, ptchShortName = ${this.ptcfShortName}`);
             return undefined;
         }
         if (this.ptcfUnknown.length !== 6) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Unexpected length of unknown ptcf byte sequence for patch ${this.name}. Length is ${this.ptcfUnknown.lastIndexOf} but expected 6.`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Unexpected length of unknown ptcf byte sequence for patch ${this.name}. Length is ${this.ptcfUnknown.lastIndexOf} but expected 6.`);
             return undefined;
         }
         if (this.ptcfShortName.length !== 10) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Unexpected length of short name for patch "${this.name}". Length is ${this.ptcfShortName.lastIndexOf} but expected 10.`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Unexpected length of short name for patch "${this.name}". Length is ${this.ptcfShortName.lastIndexOf} but expected 10.`);
             return undefined;
         }
         offset = result = this.writeString(ptcfChunk, offset, this.PTCF);
@@ -1216,22 +1216,22 @@ export class ZoomPatch {
         offset = result = this.writeInt32Array(ptcfChunk, offset, this.ids);
         success &&= (result !== 0);
         if (!success) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch "${this.name}". Patch buffer size incorrect.`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch "${this.name}". Patch buffer size incorrect.`);
             return undefined;
         }
         let expectedOffset = 4 + 4;
         expectedOffset += ptcfToplevelDataLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         // TXJ1 chunk
         if (this.TXJ1 === null) {
-            shouldLog(LogLevel.Info) && console.log(`Skipping empty TXJ1 chunk when attempting to build patch buffer for patch "${this.name}"`);
+            log(LogLevel.Info, "ZoomPatch", `Skipping empty TXJ1 chunk when attempting to build patch buffer for patch "${this.name}"`);
         }
         else {
             if (this.txj1Length === null || (this.txj1Length > 0 && this.txj1DescriptionJapanese === null)) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. txj1Length = ${this.txj1Length}, txj1DescriptionJapanese = ${this.txj1DescriptionJapanese}`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. txj1Length = ${this.txj1Length}, txj1DescriptionJapanese = ${this.txj1DescriptionJapanese}`);
                 return undefined;
             }
             offset = result = this.writeString(ptcfChunk, offset, this.TXJ1);
@@ -1240,7 +1240,7 @@ export class ZoomPatch {
             success &&= (result !== 0);
             if (this.txj1DescriptionJapanese !== null) {
                 if (this.txj1DescriptionJapanese.length !== this.txj1Length) {
-                    shouldLog(LogLevel.Error) && console.error(`Inconsistent patch data. this.txj1DescriptionJapanese.length = ${this.txj1DescriptionJapanese.length}, this.txj1Length = ${this.txj1Length}`);
+                    log(LogLevel.Error, "ZoomPatch", `Inconsistent patch data. this.txj1DescriptionJapanese.length = ${this.txj1DescriptionJapanese.length}, this.txj1Length = ${this.txj1Length}`);
                     return undefined;
                 }
                 offset = result = this.writeSlice(ptcfChunk, offset, this.txj1DescriptionJapanese);
@@ -1249,16 +1249,16 @@ export class ZoomPatch {
         }
         expectedOffset += txj1TotalLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         // TXE1 chunk
         if (this.TXE1 === null) {
-            shouldLog(LogLevel.Info) && console.log(`Skipping empty TXE1 chunk when attempting to build patch buffer for patch "${this.name}"`);
+            log(LogLevel.Info, "ZoomPatch", `Skipping empty TXE1 chunk when attempting to build patch buffer for patch "${this.name}"`);
         }
         else {
             if (this.txe1Length === null || (this.txe1Length > 0 && this.txe1DescriptionEnglish === null)) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. txe1Length = ${this.txe1Length}, txe1DescriptionJapanese = ${this.txe1DescriptionEnglish}`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. txe1Length = ${this.txe1Length}, txe1DescriptionJapanese = ${this.txe1DescriptionEnglish}`);
                 return undefined;
             }
             offset = result = this.writeString(ptcfChunk, offset, this.TXE1);
@@ -1267,7 +1267,7 @@ export class ZoomPatch {
             success &&= (result !== 0);
             if (this.txe1DescriptionEnglish !== null) {
                 if (this.txe1DescriptionEnglish.length !== this.txe1Length) {
-                    shouldLog(LogLevel.Error) && console.error(`Inconsistent patch data. this.txe1DescriptionEnglish.length = ${this.txe1DescriptionEnglish.length}, this.txe1Length = ${this.txe1Length}`);
+                    log(LogLevel.Error, "ZoomPatch", `Inconsistent patch data. this.txe1DescriptionEnglish.length = ${this.txe1DescriptionEnglish.length}, this.txe1Length = ${this.txe1Length}`);
                     return undefined;
                 }
                 offset = result = this.writeString(ptcfChunk, offset, this.txe1DescriptionEnglish);
@@ -1276,24 +1276,24 @@ export class ZoomPatch {
         }
         expectedOffset += txe1TotalLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         // EDTB Chunk
         if (this.EDTB === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch "${this.name}". EDTB chunk is missing."`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch "${this.name}". EDTB chunk is missing."`);
             return undefined;
         }
         if (this.edtbReversedBytes === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch "${this.name}". edtbReversedBytes = null.`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch "${this.name}". edtbReversedBytes = null.`);
             return undefined;
         }
         if (this.edtbLength === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. edtbLength = ${this.edtbLength}`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. edtbLength = ${this.edtbLength}`);
             return undefined;
         }
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. effectSettings = ${this.effectSettings}`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. effectSettings = ${this.effectSettings}`);
             return undefined;
         }
         offset = result = this.writeString(ptcfChunk, offset, this.EDTB);
@@ -1303,7 +1303,7 @@ export class ZoomPatch {
         for (let i = 0; i < this.numEffects; i++) {
             let reversedBytes = new Uint8Array(PTCF_EDTB_REVERSED_BYTES_SIZE);
             if (this.edtbReversedBytes[i].length !== reversedBytes.length) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch "${this.name}". Unexpected length of edtbReversedBytes[${i}]. edtbReversedBytes[${i}] = ${this.edtbReversedBytes[i].length}, expected ${reversedBytes.length}.`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch "${this.name}". Unexpected length of edtbReversedBytes[${i}]. edtbReversedBytes[${i}] = ${this.edtbReversedBytes[i].length}, expected ${reversedBytes.length}.`);
                 return undefined;
             }
             reversedBytes.set(this.edtbReversedBytes[i], 0);
@@ -1335,16 +1335,16 @@ export class ZoomPatch {
         }
         expectedOffset += edtbTotalLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         // PRM2 chunk
         if (this.PRM2 === null) {
-            shouldLog(LogLevel.Info) && console.log(`Skipping empty PRM2 chunk when attempting to build patch buffer for patch "${this.name}"`);
+            log(LogLevel.Info, "ZoomPatch", `Skipping empty PRM2 chunk when attempting to build patch buffer for patch "${this.name}"`);
         }
         else {
             if (this.prm2Length === null || this.prm2Buffer === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. prm2Length = ${this.prm2Length}, prm2Unknown = ${this.prm2Buffer}`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. prm2Length = ${this.prm2Length}, prm2Unknown = ${this.prm2Buffer}`);
                 return undefined;
             }
             if (this.prm2Buffer === null || this.prm2InvalidEffectSlot === null || this.prm2PatchVolume === null ||
@@ -1355,7 +1355,7 @@ export class ZoomPatch {
                 this.prm2Byte13 === null || this.prm2Byte14 === null ||
                 this.prm2Byte20Bit1And8 === null || this.prm2Byte21Lower4Bits === null || this.prm2Byte22Bits3To7 === null || this.prm2Byte23Upper3Bits === null ||
                 this.prm2Byte24 === null || this.prm2Byte25 === null || this.prm2Byte26 === null || this.prm2Byte27 === null || this.prm2Byte28 === null) {
-                shouldLog(LogLevel.Warning) && console.error(`Unable to build PRM2 patch buffer. Inconsistent patch data for patch ${this.name}.`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build PRM2 patch buffer. Inconsistent patch data for patch ${this.name}.`);
             }
             else {
                 this.setPrm2BufferFromDerivedValues(this.prm2Buffer, false, this.prm2InvalidEffectSlot, this.prm2PatchVolume, this.prm2EditEffectSlot, this.edtbEffectSettings.length, this.prm2PreampSlot, this.prm2BPMSlot, this.prm2LineSelSlot, this.prm2Tempo, this.prm2Routing, this.prm2Byte2Lower6Bits, this.prm2Byte3Upper4Bits, this.prm2Byte9Lower5Bits, this.prm2Byte10Bit5, this.prm2Byte13, this.prm2Byte14, this.prm2Byte20Bit1And8, this.prm2Byte21Lower4Bits, this.prm2Byte22Bits3To7, this.prm2Byte23Upper3Bits, this.prm2Byte24, this.prm2Byte25, this.prm2Byte26, this.prm2Byte27, this.prm2Byte28);
@@ -1369,26 +1369,26 @@ export class ZoomPatch {
         }
         expectedOffset += prm2TotalLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         // NAME chunk
         if (this.NAME === null) {
-            shouldLog(LogLevel.Info) && console.log(`Skipping empty NAME chunk when attempting to build patch buffer for patch "${this.name}"`);
+            log(LogLevel.Info, "ZoomPatch", `Skipping empty NAME chunk when attempting to build patch buffer for patch "${this.name}"`);
         }
         else {
             if (this.nameLength === null || this.nameName === null) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. nameLength = ${this.nameLength}, nameName = ${this.nameName}`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. nameLength = ${this.nameLength}, nameName = ${this.nameName}`);
                 return undefined;
             }
             // For MS Plus pedals, name is always 32 bytes, 28 bytes of ascii and four bytes of zero
             let enforceLength = nameLength > 0 ? nameLength : 32;
             if (this.nameName.length !== this.nameLength) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. nameLength = ${this.nameLength}, nameName.length = ${this.nameName.length}, nameName = "${this.nameName}"`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. nameLength = ${this.nameLength}, nameName.length = ${this.nameName.length}, nameName = "${this.nameName}"`);
                 return undefined;
             }
             if (this.nameName.length !== enforceLength) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. Expected nameLength to be ${enforceLength}. nameLength = ${this.nameLength}"`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. Expected nameLength to be ${enforceLength}. nameLength = ${this.nameLength}"`);
                 return undefined;
             }
             offset = result = this.writeString(ptcfChunk, offset, this.NAME);
@@ -1400,17 +1400,17 @@ export class ZoomPatch {
         }
         expectedOffset += nameTotalLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         if (!this.verifyPrm2Buffer())
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2Buffer() failed`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2Buffer() failed`);
         if (!this.verifyPrm2PreampSlotBits())
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2PreampSlotBits() failed`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2PreampSlotBits() failed`);
         if (!this.verifyPrm2BPMSlotBits())
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2BPMSlotBits() failed`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2BPMSlotBits() failed`);
         if (!this.verifyPrm2LineSelSlotBits())
-            shouldLog(LogLevel.Warning) && console.warn(`${this.ptcfShortName}: verifyPrm2LineSelSlotBits() failed`);
+            log(LogLevel.Warning, "ZoomPatch", `${this.ptcfShortName}: verifyPrm2LineSelSlotBits() failed`);
         // compareBuffers(ptcfChunk, this.ptcfChunk);
         this.ptcfChunk = ptcfChunk;
         return this.ptcfChunk;
@@ -1418,34 +1418,34 @@ export class ZoomPatch {
     buildMSDataBuffer() {
         this.updatePatchPropertiesFromDerivedProperties();
         if (this.MSOG === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. MSOG == null`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. MSOG == null`);
             return undefined;
         }
         // calculate size
         if (this.msogEffectsReversedBytes === null || this.msogNumEffects === null || this.msogUnknown1 === null || this.msogName === null || this.msogUnknown2 === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. this.msogEffectsReversedBytes = ${this.msogEffectsReversedBytes}` +
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. this.msogEffectsReversedBytes = ${this.msogEffectsReversedBytes}` +
                 `, this.msogNumEffects = ${this.msogNumEffects}, this.msogUnknown1 = ${this.msogUnknown1}, this.msogName = ${this.msogName}, this.msogUnknown2 = ${this.msogUnknown2}`);
             return undefined;
         }
         if (this.msogUnknown1.length !== 3) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogUnknown1.length !== 3`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogUnknown1.length !== 3`);
             return undefined;
         }
         if (this.msogName.length !== 10) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogName.length !== 10`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogName.length !== 10`);
             return undefined;
         }
         if (this.msogUnknown2.length !== 1) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogUnknown2.length !== 1`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch ${this.name}. Inconsistent patch data. this.msogUnknown2.length !== 1`);
             return undefined;
         }
         let effectSectionLength = MSOG_REVERSED_BYTES_SIZE;
         let msogTotalLength = this.maxNumEffects * effectSectionLength + this.msogUnknown1.length + this.msogName.length + this.msogUnknown2.length;
         if (this.msogDataBuffer !== null && msogTotalLength !== this.msogDataBuffer.length) {
-            shouldLog(LogLevel.Warning) && console.warn(`Mismatched buffer sizes when building patch buffer for patch ${this.name}. msogTotalLength !== this.msogDataBuffer.length. msogTotalLength = ${msogTotalLength}, this.msogDataBuffer.length = ${this.msogDataBuffer.length}`);
+            log(LogLevel.Warning, "ZoomPatch", `Mismatched buffer sizes when building patch buffer for patch ${this.name}. msogTotalLength !== this.msogDataBuffer.length. msogTotalLength = ${msogTotalLength}, this.msogDataBuffer.length = ${this.msogDataBuffer.length}`);
         }
         if (this.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. effectSettings = ${this.effectSettings}`);
+            log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer. Inconsistent patch data for patch ${this.name}. effectSettings = ${this.effectSettings}`);
             return undefined;
         }
         let msogDataBuffer = new Uint8Array(msogTotalLength);
@@ -1455,7 +1455,7 @@ export class ZoomPatch {
         for (let i = 0; i < this.maxNumEffects; i++) {
             let reversedBytes = new Uint8Array(effectSectionLength);
             if (this.msogEffectsReversedBytes[i].length !== reversedBytes.length) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to build patch buffer for patch "${this.name}". Unexpected length of msogEffectsReversedBytes[${i}]. msogEffectsReversedBytes[${i}] = ${this.msogEffectsReversedBytes[i].length}, expected ${reversedBytes.length}.`);
+                log(LogLevel.Error, "ZoomPatch", `Unable to build patch buffer for patch "${this.name}". Unexpected length of msogEffectsReversedBytes[${i}]. msogEffectsReversedBytes[${i}] = ${this.msogEffectsReversedBytes[i].length}, expected ${reversedBytes.length}.`);
                 return undefined;
             }
             reversedBytes.set(this.msogEffectsReversedBytes[i], 0);
@@ -1502,7 +1502,7 @@ export class ZoomPatch {
         let expectedOffset = 0;
         expectedOffset += this.maxNumEffects * effectSectionLength;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         let tempo1 = this.msogUnknown1[1];
@@ -1524,21 +1524,21 @@ export class ZoomPatch {
         success &&= (result !== 0);
         expectedOffset += this.msogUnknown1.length;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         offset = result = this.writeString(msogDataBuffer, offset, this.msogName);
         success &&= (result !== 0);
         expectedOffset += this.msogName.length;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         offset = result = this.writeSlice(msogDataBuffer, offset, this.msogUnknown2);
         success &&= (result !== 0);
         expectedOffset += this.msogUnknown2.length;
         if (offset !== expectedOffset) {
-            shouldLog(LogLevel.Error) && console.error(`Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
+            log(LogLevel.Error, "ZoomPatch", `Unexpected offset when attempting to build patch buffer for patch "${this.name}". offset = ${offset}, expected offset = ${expectedOffset}`);
             return undefined;
         }
         compareBuffers(msogDataBuffer, this.msogDataBuffer);
@@ -1615,7 +1615,7 @@ export class ZoomPatch {
         // We might want to handle this problem somewhere else, not in readMSPatch(). B emore robust elsewhere wrt empty (id === 0) slots.
         let [numEffectsMismatch, countNumEffects] = this.msNumEffectsMismatch(); // log a warning if there's a mismatch between msogNumEffects and number of effect slots with id !== 0
         if (this.msogNumEffects === 0)
-            shouldLog(LogLevel.Warning) && console.warn("msogNumEffects === 0. Investigate.");
+            log(LogLevel.Warning, "ZoomPatch", "msogNumEffects === 0. Investigate.");
         // // It is possible to have an empty slot in the first slot and an actual effect in the second slot
         // // So we count from the back
         // let countNumEffects = this.maxNumEffects;
@@ -1646,11 +1646,11 @@ export class ZoomPatch {
         this.msogUnknown2 = data.slice(offset, offset + 1);
         offset += 1;
         if (this.msogEditEffectSlot >= this.msogNumEffects && this.msogNumEffects > 0) {
-            shouldLog(LogLevel.Warning) && console.warn(`Edit effect slot mismatch in patch "${this.msogName}": msogEditEffectSlot (${this.msogEditEffectSlot}) >= msogNumEffects (${this.msogNumEffects}). Changing msogEditEffectSlot to ${this.msogNumEffects - 1}.`);
+            log(LogLevel.Warning, "ZoomPatch", `Edit effect slot mismatch in patch "${this.msogName}": msogEditEffectSlot (${this.msogEditEffectSlot}) >= msogNumEffects (${this.msogNumEffects}). Changing msogEditEffectSlot to ${this.msogNumEffects - 1}.`);
             this.msogEditEffectSlot = this.msogNumEffects - 1;
         }
         if (numEffectsMismatch)
-            shouldLog(LogLevel.Warning) && console.warn(`Effect count mismatch in patch "${this.msogName}": msogNumEffects (${this.msogNumEffects}) != number of IDs that are not zero (${countNumEffects}).`);
+            log(LogLevel.Warning, "ZoomPatch", `Effect count mismatch in patch "${this.msogName}": msogNumEffects (${this.msogNumEffects}) != number of IDs that are not zero (${countNumEffects}).`);
         // tempo
         // dsp full
         // max effect number (numEffects?)
@@ -1692,7 +1692,7 @@ export class ZoomPatch {
     }
     static getMaxNameLength(nameLength) {
         if (nameLength !== 32 && nameLength !== 16) {
-            shouldLog(LogLevel.Warning) && console.warn(`nameLength is ${nameLength}, which is not 32 or 16. Investigate.`);
+            log(LogLevel.Warning, "ZoomPatch", `nameLength is ${nameLength}, which is not 32 or 16. Investigate.`);
         }
         if (nameLength === 32 || nameLength === 0)
             return 28; // MS+ pedals have name length 32
@@ -1779,7 +1779,7 @@ export class ZoomPatch {
             enforceLength = 14 + zeroBytes;
         }
         else {
-            shouldLog(LogLevel.Warning) && console.warn(`maxNameLength is ${zoomPatch.maxNameLength}, which is not 28 or 14. Investigate.`);
+            log(LogLevel.Warning, "ZoomPatch", `maxNameLength is ${zoomPatch.maxNameLength}, which is not 28 or 14. Investigate.`);
             enforceLength = zoomPatch.maxNameLength;
             zeroBytes = 0;
         }

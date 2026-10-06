@@ -4,7 +4,7 @@ import { MessageType } from "./midiproxy.js";
 import { getChannelMessage } from "./miditools.js";
 import { Throttler } from "./throttler.js";
 import { crc32, eight2seven, getExceptionErrorString, getNumberOfEightBitBytes, partialArrayMatch, partialArrayStringMatch, seven2eight, bytesToHexString, hexStringToUint8Array, sleepForAWhile } from "./tools.js";
-import { shouldLog, LogLevel, getLogLevel, setLogLevel } from "./Logger.js";
+import { shouldLog, LogLevel, getLogLevel, setLogLevel, log } from "./Logger.js";
 class StringAndBytes {
     str;
     bytes;
@@ -156,10 +156,10 @@ export class ZoomDevice {
     }
     async open() {
         if (this._isOpen) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to open ZoomDevice ${this._zoomDeviceIdString} which is already open`);
+            log(LogLevel.Warning, "ZoomDevice", `Attempting to open ZoomDevice ${this._zoomDeviceIdString} which is already open`);
             return;
         }
-        shouldLog(LogLevel.Info) && console.log(`Opening ZoomDevice ${this.deviceName}`);
+        log(LogLevel.Info, "ZoomDevice", `Opening ZoomDevice ${this.deviceName}`);
         this._isOpen = true;
         await this._midi.openInput(this._midiDevice.inputID);
         await this._midi.openOutput(this._midiDevice.outputID);
@@ -172,10 +172,10 @@ export class ZoomDevice {
     }
     async close() {
         if (!this._isOpen) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to close ZoomDevice ${this._zoomDeviceIdString} which is not open`);
+            log(LogLevel.Warning, "ZoomDevice", `Attempting to close ZoomDevice ${this._zoomDeviceIdString} which is not open`);
             return;
         }
-        shouldLog(LogLevel.Info) && console.log(`Closing ZoomDevice ${this.deviceName}`);
+        log(LogLevel.Info, "ZoomDevice", `Closing ZoomDevice ${this.deviceName}`);
         this.removeAllListeners();
         this.removeAllCurrentPatchChangedListeners();
         this.removeAllEffectParameterChangedListeners();
@@ -186,7 +186,7 @@ export class ZoomDevice {
         this.removeAllTempoChangedListeners();
         this.disconnectMessageHandler();
         if (this._autoRequestProgramChangeTimerStarted) {
-            shouldLog(LogLevel.Info) && console.log(`Stopping auto-request program change timer for ZoomDevice ${this._zoomDeviceID}`);
+            log(LogLevel.Info, "ZoomDevice", `Stopping auto-request program change timer for ZoomDevice ${this._zoomDeviceID}`);
             clearInterval(this._autoRequestProgramChangeTimerID);
             this._autoRequestProgramChangeTimerStarted = false;
             this._autoRequestProgramChangeMuteLog = false;
@@ -194,7 +194,7 @@ export class ZoomDevice {
         this._isOpen = false;
         await this._midi.closeInput(this._midiDevice.inputID);
         await this._midi.closeOutput(this._midiDevice.outputID);
-        shouldLog(LogLevel.Info) && console.log(`Closed ZoomDevice ${this._zoomDeviceID}`);
+        log(LogLevel.Info, "ZoomDevice", `Closed ZoomDevice ${this._zoomDeviceID}`);
         this.emitOpenCloseEvent(false);
     }
     setMuteState(messageType, mute) {
@@ -476,15 +476,15 @@ export class ZoomDevice {
     }
     setCurrentEffectSlot(effectSlot) {
         if (this.currentPatch === undefined) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to set effect slot ${effectSlot} because currentPatch is undefined`);
+            log(LogLevel.Error, "ZoomDevice", `Unable to set effect slot ${effectSlot} because currentPatch is undefined`);
             return;
         }
         if (this.currentPatch.effectSettings === null || effectSlot >= this.currentPatch.effectSettings.length) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to set effect parameter for current patch because effectSlot ${effectSlot} is out of range`);
+            log(LogLevel.Error, "ZoomDevice", `Unable to set effect parameter for current patch because effectSlot ${effectSlot} is out of range`);
             return;
         }
         if (this._currentEffectSlot !== -1 && this.currentPatch.currentEffectSlot !== this._currentEffectSlot) {
-            shouldLog(LogLevel.Warning) && console.warn(`currentPatch.currentEffectSlot (${this.currentPatch.currentEffectSlot}) !== _currentEffectSlot (${this._currentEffectSlot})`);
+            log(LogLevel.Warning, "ZoomDevice", `currentPatch.currentEffectSlot (${this.currentPatch.currentEffectSlot}) !== _currentEffectSlot (${this._currentEffectSlot})`);
         }
         if (this._currentEffectSlot !== effectSlot) {
             let patch = this.freezeCurrentPatch ? this.currentPatch.clone() : this.currentPatch;
@@ -517,12 +517,12 @@ export class ZoomDevice {
     }
     setEffectParameterForCurrentPatch(effectSlot, parameterNumber, value, force = false) {
         if (this.currentPatch === undefined) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to set effect parameter for current patch because currentPatch is undefined`);
+            log(LogLevel.Error, "ZoomDevice", `Unable to set effect parameter for current patch because currentPatch is undefined`);
             return;
         }
         let intValue = Math.round(value); // value should always be an integer. Screen functionality will fail if it's not an integer.
         if (intValue !== value) {
-            shouldLog(LogLevel.Warning) && console.warn(`setEffectParameterForCurrentPatch() - value ${value} is not an integer, rounding to ${intValue}`);
+            log(LogLevel.Warning, "ZoomDevice", `setEffectParameterForCurrentPatch() - value ${value} is not an integer, rounding to ${intValue}`);
             value = intValue;
         }
         let parameterIndex = parameterNumber - 2;
@@ -533,7 +533,7 @@ export class ZoomDevice {
         }
         let patch = this.freezeCurrentPatch ? this.currentPatch.clone() : this.currentPatch;
         if (patch.effectSettings === null || effectSlot >= patch.effectSettings.length || parameterIndex >= patch.effectSettings[effectSlot].parameters.length) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to set effect parameter for current patch because effectSlot ${effectSlot} or parameterIndex ${parameterIndex} is out of range`);
+            log(LogLevel.Error, "ZoomDevice", `Unable to set effect parameter for current patch because effectSlot ${effectSlot} or parameterIndex ${parameterIndex} is out of range`);
             return;
         }
         let effectSettings = patch.effectSettings[effectSlot];
@@ -546,7 +546,7 @@ export class ZoomDevice {
             if (this.effectIDMap !== undefined)
                 ZoomDevice.setDefaultsForEffect(effectSettings, this.effectIDMap);
             else
-                shouldLog(LogLevel.Warning) && console.warn(`Unable to set effect parameter for current patch because effectIDMap is undefined`);
+                log(LogLevel.Warning, "ZoomDevice", `Unable to set effect parameter for current patch because effectIDMap is undefined`);
             patch.changeEffectInSlot(effectSlot, effectSettings);
         }
         else {
@@ -616,7 +616,7 @@ export class ZoomDevice {
      */
     setTempoOnDevice(tempo) {
         if (this._supportedCommands.get(ZoomDevice.messageTypes.parameterValueV2.str) !== SupportType.Supported) {
-            shouldLog(LogLevel.Warning) && console.warn(`setTempoOnDevice: parameterValueV2 is not supported by this pedal - use Sync to Pedal instead (the PRM2 chunk carries the tempo)`);
+            log(LogLevel.Warning, "ZoomDevice", `setTempoOnDevice: parameterValueV2 is not supported by this pedal - use Sync to Pedal instead (the PRM2 chunk carries the tempo)`);
             return false;
         }
         const value = Math.round(tempo);
@@ -751,7 +751,7 @@ export class ZoomDevice {
     }
     async downloadScreens(startScreen = 0, endScreen = 12) {
         if (!(this._supportedCommands.get(ZoomDevice.messageTypes.requestScreensForCurrentPatch.str) === SupportType.Supported)) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to get screens when the command is not supported by the device (${this.deviceName})`);
+            log(LogLevel.Warning, "ZoomDevice", `Attempting to get screens when the command is not supported by the device (${this.deviceName})`);
             return undefined;
         }
         let reply;
@@ -765,7 +765,7 @@ export class ZoomDevice {
         command.set(screenRange, ZoomDevice.messageTypes.requestScreensForCurrentPatch.bytes.length);
         reply = await this.sendCommandAndGetReply(command, received => this.zoomCommandMatch(received, ZoomDevice.messageTypes.screensForCurrentPatch.bytes));
         if (reply === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`Didn't get a reply when asking for screens for current patch for the device (${this.deviceName})`);
+            log(LogLevel.Warning, "ZoomDevice", `Didn't get a reply when asking for screens for current patch for the device (${this.deviceName})`);
             return undefined;
         }
         let offset = 6;
@@ -774,7 +774,7 @@ export class ZoomDevice {
     }
     requestScreens() {
         if (!(this._supportedCommands.get(ZoomDevice.messageTypes.requestScreensForCurrentPatch.str) === SupportType.Supported)) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempting to get screens when the command is not supported by the device (${this.deviceName})`);
+            log(LogLevel.Warning, "ZoomDevice", `Attempting to get screens when the command is not supported by the device (${this.deviceName})`);
             return undefined;
         }
         let screenRange = new Uint8Array(3);
@@ -853,17 +853,17 @@ export class ZoomDevice {
         else
             data = patch.buildMSDataBuffer();
         if (data === undefined || data.length < 11) {
-            shouldLog(LogLevel.Error) && console.error(`ZoomDevice.uploadCurrentPatch() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk() or ZoomPatch.buildMSDataBuffer()`);
+            log(LogLevel.Error, "ZoomDevice", `ZoomDevice.uploadCurrentPatch() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk() or ZoomPatch.buildMSDataBuffer()`);
             return;
         }
         let paddedData = data;
         if (this._patchLength != -1) {
             if (data.length > paddedData.length) {
-                shouldLog(LogLevel.Error) && console.error(`The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
+                log(LogLevel.Error, "ZoomDevice", `The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
                 return;
             }
             if (patch.MSOG !== null && this._patchLength !== data.length) {
-                shouldLog(LogLevel.Error) && console.error(`The length of the supplied patch data (${data.length}) doesn't match the expected patch length reported by the pedal (${this._patchLength}).`);
+                log(LogLevel.Error, "ZoomDevice", `The length of the supplied patch data (${data.length}) doesn't match the expected patch length reported by the pedal (${this._patchLength}).`);
                 return;
             }
             paddedData = new Uint8Array(this._patchLength);
@@ -901,13 +901,13 @@ export class ZoomDevice {
             let data = patch.buildPTCFChunk(this._ptcfNameLength);
             //let data = patch.ptcfChunk;
             if (data === undefined || data.length < 11) {
-                shouldLog(LogLevel.Error) && console.error(`ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk()`);
+                log(LogLevel.Error, "ZoomDevice", `ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk()`);
                 return false;
             }
             let paddedData = data;
             if (this._patchLength != -1) {
                 if (data.length > this._patchLength) {
-                    shouldLog(LogLevel.Error) && console.error(`The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
+                    log(LogLevel.Error, "ZoomDevice", `The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
                     return false;
                 }
                 paddedData = new Uint8Array(this._patchLength);
@@ -924,11 +924,11 @@ export class ZoomDevice {
             let data = patch.buildMSDataBuffer();
             // let data = patch.msogDataBuffer;
             if (data === undefined || data.length < 11) {
-                shouldLog(LogLevel.Error) && console.error(`ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildMSDataBuffer()`);
+                log(LogLevel.Error, "ZoomDevice", `ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildMSDataBuffer()`);
                 return false;
             }
             if (this._patchLength != -1 && data.length > this._patchLength) {
-                shouldLog(LogLevel.Error) && console.error(`The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
+                log(LogLevel.Error, "ZoomDevice", `The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
                 return false;
             }
             sevenBitData = eight2seven(data);
@@ -939,13 +939,13 @@ export class ZoomDevice {
             command.set(programLengthArray, ZoomDevice.messageTypes.patchDumpForMemoryLocationV1.bytes.length);
         }
         else {
-            shouldLog(LogLevel.Error) && console.error(`ZoomDevice.uploadPatchToMemorySlot() received Invalid patch parameter (no ptcf chunk and no MSOG data)`);
+            log(LogLevel.Error, "ZoomDevice", `ZoomDevice.uploadPatchToMemorySlot() received Invalid patch parameter (no ptcf chunk and no MSOG data)`);
             return false;
         }
         if (waitForAcknowledge) {
             let reply = await this.sendCommandAndGetReply(sevenBitData, received => this.zoomCommandMatch(received, ZoomDevice.messageTypes.success.bytes), command, crcBytes);
             if (reply === undefined) {
-                shouldLog(LogLevel.Warning) && console.warn(`Didn't get reply after uploading patch ${patch.name} to memory slot ${memorySlot}`);
+                log(LogLevel.Warning, "ZoomDevice", `Didn't get reply after uploading patch ${patch.name} to memory slot ${memorySlot}`);
             }
         }
         else
@@ -961,7 +961,7 @@ export class ZoomDevice {
     async updatePatchListFromPedal() {
         this._patchListDownloadInProgress = true;
         if (this._numPatches === -1) {
-            shouldLog(LogLevel.Warning) && console.warn("Attempting to download patches from pedal without knowing how many patches are stored on the pedal (this._numPatches = -1)");
+            log(LogLevel.Warning, "ZoomDevice", "Attempting to download patches from pedal without knowing how many patches are stored on the pedal (this._numPatches = -1)");
         }
         let maxNumPatches = this._numPatches === -1 ? 500 : this._numPatches;
         if (this._patchList.length !== maxNumPatches)
@@ -969,7 +969,7 @@ export class ZoomDevice {
         for (let i = 0; i < maxNumPatches; i++) {
             let patch = await this.downloadPatchFromMemorySlot(i);
             if (patch === undefined) {
-                shouldLog(LogLevel.Info) && console.log(`Got no reply for patch number ${i} while attempting to download patches from device ${this.deviceName}`);
+                log(LogLevel.Info, "ZoomDevice", `Got no reply for patch number ${i} while attempting to download patches from device ${this.deviceName}`);
                 this._patchList.splice(i);
                 this._numPatches = i;
                 break;
@@ -1015,9 +1015,9 @@ export class ZoomDevice {
                 this._rawPatchList[i] = undefined;
                 let [patch, memorySlot] = this.parsePatchFromMemorySlot(data);
                 if (patch === undefined || memorySlot === undefined)
-                    shouldLog(LogLevel.Warning) && console.warn(`Error when parsing patch from memory slot, data.length: ${data.length}, patch: ${patch}, memorySlot: ${memorySlot}`);
+                    log(LogLevel.Warning, "ZoomDevice", `Error when parsing patch from memory slot, data.length: ${data.length}, patch: ${patch}, memorySlot: ${memorySlot}`);
                 else if (memorySlot !== i)
-                    shouldLog(LogLevel.Warning) && console.warn(`Parsed patch is for memory slot ${memorySlot} but expected memory slot to be ${i}`);
+                    log(LogLevel.Warning, "ZoomDevice", `Parsed patch is for memory slot ${memorySlot} but expected memory slot to be ${i}`);
                 else {
                     Object.freeze(patch);
                     this._patchList[memorySlot] = patch;
@@ -1049,7 +1049,7 @@ export class ZoomDevice {
             // }
         }
         if (data === undefined) {
-            shouldLog(LogLevel.Error) && console.error(`No data to get sysex for patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomDevice", `No data to get sysex for patch ${patch.name}`);
             return undefined;
         }
         let sevenBitData;
@@ -1061,13 +1061,13 @@ export class ZoomDevice {
         }
         else if (this.isCommandSupported(ZoomDevice.messageTypes.requestCurrentPatchV2)) {
             if (data === undefined || data.length < 11) {
-                shouldLog(LogLevel.Error) && console.error(`ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk()`);
+                log(LogLevel.Error, "ZoomDevice", `ZoomDevice.uploadPatchToMemorySlot() received invalid patch parameter - possibly because of a failed ZoomPatch.buildPTCFChunk()`);
                 return undefined;
             }
             let paddedData = data;
             if (this._patchLength != -1) {
                 if (data.length > this._patchLength) {
-                    shouldLog(LogLevel.Error) && console.error(`The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
+                    log(LogLevel.Error, "ZoomDevice", `The length of the supplied patch data (${data.length}) is greater than the patch length reported by the pedal (${this._patchLength}).`);
                     return undefined;
                 }
                 paddedData = new Uint8Array(this._patchLength);
@@ -1094,7 +1094,7 @@ export class ZoomDevice {
             //                                        ^^--- F
         }
         else {
-            shouldLog(LogLevel.Error) && console.error(`No available command to get sysex for patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomDevice", `No available command to get sysex for patch ${patch.name}`);
             return undefined;
         }
         return this.getCommandBufferFromData(sevenBitData, prependCommand, crcBytes, false);
@@ -1136,7 +1136,7 @@ export class ZoomDevice {
         let currentPatchV1 = partialArrayMatch(sysexData, ZoomDevice.messageTypes.patchDumpForCurrentPatchV1.bytes, 4);
         let memoryLocationV1 = partialArrayMatch(sysexData, ZoomDevice.messageTypes.patchDumpForMemoryLocationV1.bytes, 4);
         if (!(sysexData.length > 10 && (currentPatchV2 || memoryLocationV2 || currentPatchV1 || memoryLocationV1))) {
-            shouldLog(LogLevel.Warning) && console.warn(`Attempted to convert invalid sysex of length ${sysexData.length} to patch data`);
+            log(LogLevel.Warning, "ZoomDevice", `Attempted to convert invalid sysex of length ${sysexData.length} to patch data`);
             return [patchData, program, bank];
         }
         let offset = 0;
@@ -1166,7 +1166,7 @@ export class ZoomDevice {
             numberOfCRCBytes = possibleNumberOfCRCBytes;
         patchData = seven2eight(sysexData, offset, sysexData.length - 1 - zeroPaddingAtEndOfPatch - numberOfCRCBytes);
         if (patchLengthFromSysex !== 0 && patchData.length != patchLengthFromSysex) {
-            shouldLog(LogLevel.Warning) && console.warn(`Patch data length (${patchData.length}) does not match the patch length specified in the sysex message (${patchLengthFromSysex}). numberOfCRCBytes: ${numberOfCRCBytes}.`);
+            log(LogLevel.Warning, "ZoomDevice", `Patch data length (${patchData.length}) does not match the patch length specified in the sysex message (${patchLengthFromSysex}). numberOfCRCBytes: ${numberOfCRCBytes}.`);
         }
         return [patchData, program, bank];
     }
@@ -1196,9 +1196,9 @@ export class ZoomDevice {
             this._autoRequestProgramChangeTimerID = setInterval(() => {
                 device.autoRequestProgramChangeTimer();
             }, this._autoRequestProgramChangeIntervalMilliseconds);
-            shouldLog(LogLevel.Info) && console.log(`Starting auto-request program change timer for ZoomDevice ${this._zoomDeviceID}`);
+            log(LogLevel.Info, "ZoomDevice", `Starting auto-request program change timer for ZoomDevice ${this._zoomDeviceID}`);
             this._autoRequestProgramChangeTimerStarted = true;
-            shouldLog(LogLevel.Info) && console.log(`Started regular polling of program change (timer ID ${this._autoRequestProgramChangeTimerID}). Muting logging of program and bank requests and the bank and program change message.`);
+            log(LogLevel.Info, "ZoomDevice", `Started regular polling of program change (timer ID ${this._autoRequestProgramChangeTimerID}). Muting logging of program and bank requests and the bank and program change message.`);
         }
     }
     autoRequestProgramChangeTimer() {
@@ -1287,7 +1287,7 @@ export class ZoomDevice {
             paramValue = data[7] + ((data[8] & 0b01111111) << 7);
         }
         else {
-            shouldLog(LogLevel.Warning) && console.warn(`Expected effect parameter edit message but got something else. data.length = ${data.length}, message type ${messageType}.`);
+            log(LogLevel.Warning, "ZoomDevice", `Expected effect parameter edit message but got something else. data.length = ${data.length}, message type ${messageType}.`);
         }
         return [effectSlot, paramNumber, paramValue];
     }
@@ -1305,11 +1305,11 @@ export class ZoomDevice {
         let commandLength = 5 + data.length;
         let output = this._midi.getOutputInfo(this._midiDevice.outputID);
         if (output === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is unknown"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is unknown"`);
             return;
         }
         if (output.connection != "open") {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
             return;
         }
         let commandBuffer = this._commandBuffers.get(commandLength);
@@ -1327,7 +1327,7 @@ export class ZoomDevice {
         }
         catch (err) {
             let message = getExceptionErrorString(err, `for device ${output.name}`);
-            shouldLog(LogLevel.Error) && console.error(message);
+            log(LogLevel.Error, "ZoomDevice", message);
         }
     }
     /**
@@ -1371,12 +1371,12 @@ export class ZoomDevice {
     }
     sendCommand(data, prependCommand = null, appendCRC = null) {
         if (!this._midi.isOutputConnected(this._midiDevice.outputID)) {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is not connected"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is not connected"`);
             return;
         }
         let output = this._midi.getOutputInfo(this._midiDevice.outputID);
         if (output.connection != "open") {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
             return;
         }
         let commandBuffer = this.getCommandBufferFromData(data, prependCommand, appendCRC);
@@ -1385,17 +1385,17 @@ export class ZoomDevice {
         }
         catch (err) {
             let message = getExceptionErrorString(err, `for device ${output.name}`);
-            shouldLog(LogLevel.Error) && console.error(message);
+            log(LogLevel.Error, "ZoomDevice", message);
         }
     }
     async sendCommandAndGetReply(data, verifyReply, prependCommand = null, appendCRC = null, timeoutMilliseconds = this._timeoutMilliseconds) {
         if (!this._midi.isOutputConnected(this._midiDevice.outputID)) {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is not connected"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${this._midiDevice.outputID} as the device is not connected"`);
             return;
         }
         let output = this._midi.getOutputInfo(this._midiDevice.outputID);
         if (output.connection != "open") {
-            shouldLog(LogLevel.Warning) && console.warn(`WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
+            log(LogLevel.Warning, "ZoomDevice", `WARNING: Not sending MIDI message to device ${output.name} as the port is in state "${output.connection}"`);
             return;
         }
         let commandBuffer = this.getCommandBufferFromData(data, prependCommand, appendCRC);
@@ -1404,7 +1404,7 @@ export class ZoomDevice {
         }
         catch (err) {
             let message = getExceptionErrorString(err, `for device ${output.name}`);
-            shouldLog(LogLevel.Error) && console.error(message);
+            log(LogLevel.Error, "ZoomDevice", message);
             return undefined;
         }
     }
@@ -1428,7 +1428,7 @@ export class ZoomDevice {
         if (this._patchesPerBank !== -1 && bank != -1)
             memorySlot += bank * this._patchesPerBank;
         if (memorySlot >= this._patchList.length) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to sync state for bank ${bank} and program ${program} with memory slot number ${memorySlot} as it is out of bounds - this._patchList.length = ${this._patchList.length}`);
+            log(LogLevel.Error, "ZoomDevice", `Unable to sync state for bank ${bank} and program ${program} with memory slot number ${memorySlot} as it is out of bounds - this._patchList.length = ${this._patchList.length}`);
             return false;
         }
         let changed = forceUpdate || this._currentBank !== bank || this._currentProgram !== program;
@@ -1472,7 +1472,7 @@ export class ZoomDevice {
     }
     handleMIDIDataFromZoom(data, timeStamp) {
         if (this._disableMidiHandlers) {
-            shouldLog(LogLevel.Midi) && console.log(`${performance.now().toFixed(1)} Rcvd: ${bytesToHexString(data, " ")}`);
+            log(LogLevel.Midi, "ZoomDevice", `${performance.now().toFixed(1)} Rcvd: ${bytesToHexString(data, " ")}`);
             return;
         }
         this.internalMIDIDataHandler(data);
@@ -1487,10 +1487,10 @@ export class ZoomDevice {
         // Skip log for auto requests of program change, to make the log less chatty
         const messageIsPCOrBankChange = messageType === MessageType.PC || (messageType === MessageType.CC && (data1 === 0x00 || data1 == 0x20));
         const tempSkipLog = this._autoRequestProgramChangeMuteLog && messageIsPCOrBankChange;
-        let log = !this.logMutedTemporarilyForPollMessages(data);
+        let verboseLog = !this.logMutedTemporarilyForPollMessages(data);
         if (this._patchListDownloadInProgress) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received: ${bytesToHexString(data, " ")}`);
             return; // mute all message handling while the patch list is being downloaded
         }
         if (messageType === MessageType.CC && data1 === 0x00) {
@@ -1500,8 +1500,8 @@ export class ZoomDevice {
             this._previousBank = this._currentBank;
             this._currentBank = (this._currentBank & 0b0000000001111111) | (data2 << 7);
             this._bankMessagesReceived = true;
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received Bank MSB ${data2}, currentBank: ${this._currentBank}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received Bank MSB ${data2}, currentBank: ${this._currentBank}, raw: ${bytesToHexString(data, " ")}`);
         }
         else if (messageType === MessageType.CC && data1 === 0x20) {
             // Bank LSB
@@ -1510,13 +1510,13 @@ export class ZoomDevice {
             this._previousBank = this._currentBank;
             this._currentBank = (this._currentBank & 0b0011111110000000) | data2;
             this._bankMessagesReceived = true;
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received Bank LSB ${data2}, currentBank: ${this._currentBank}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received Bank LSB ${data2}, currentBank: ${this._currentBank}, raw: ${bytesToHexString(data, " ")}`);
         }
         else if (messageType === MessageType.PC) {
             // Program change
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received Program Change ${data1}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received Program Change ${data1}, raw: ${bytesToHexString(data, " ")}`);
             if (!this._usesBankBeforeProgramChange || (this._usesBankBeforeProgramChange && this._bankMessagesReceived)) {
                 this._bankMessagesReceived = false;
                 let program = data1;
@@ -1533,14 +1533,14 @@ export class ZoomDevice {
             let effectSlot = data[7];
             let parameterNumber = data[8];
             let parameterValue = data[9] + (data[10] << 7);
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received parameter update accepted for effect slot ${effectSlot}, ` +
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received parameter update accepted for effect slot ${effectSlot}, ` +
                     `parameter number ${parameterNumber} (0x${parameterNumber.toString(16).padStart(2, "0")}), ` +
                     `value ${parameterValue} (0x${parameterValue.toString(16).padStart(2, "0")}), raw: ${bytesToHexString(data, " ")}`);
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.nameCharacterV2)) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received name character index ${data[8]}, character: ${data[9]}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received name character index ${data[8]}, character: ${data[9]}, raw: ${bytesToHexString(data, " ")}`);
             // Name was edited on device (MS Plus series)
             // We need to get the current patch to get the name
             // We'll get a lot of these messages just for one changed character, so we'll throttle the request for current patch
@@ -1554,15 +1554,15 @@ export class ZoomDevice {
             // Tempo changed on device (MS Plus series)
             let oldTempo = this._currentTempo;
             this._currentTempo = data[9] + ((data[10] & 0b01111111) << 7);
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received tempo ${this._currentTempo}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received tempo ${this._currentTempo}, raw: ${bytesToHexString(data, " ")}`);
             if (oldTempo !== this._currentTempo)
                 this.emitTempoChangedEvent();
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.currentEffectSlotV2)) {
             // Current (edit) effect slot was changed on pedal (MS Plus)
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received current effect slot change ${data[9]} raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received current effect slot change ${data[9]} raw: ${bytesToHexString(data, " ")}`);
             let newEffectSLot = data[9];
             if (this._currentEffectSlot !== newEffectSLot) {
                 this._currentEffectSlot = newEffectSLot;
@@ -1583,8 +1583,8 @@ export class ZoomDevice {
         else if (this.isMessageType(data, ZoomDevice.messageTypes.parameterValueV2) || this.isMessageType(data, ZoomDevice.messageTypes.parameterValueV1)) {
             // Parameter was edited on device (MS Plus or MSOG series)
             [this._currentEffectSlot, this._currentEffectParameterNumber, this._currentEffectParameterValue] = this.getEffectEditParameters(data);
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received parameter edit slot ${this._currentEffectSlot}, ` +
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received parameter edit slot ${this._currentEffectSlot}, ` +
                     `parameter ${this._currentEffectParameterNumber}, value ${this._currentEffectParameterValue}, raw: ${bytesToHexString(data, " ")}`);
             if (this._currentEffectParameterNumber === 0) {
                 // effect slot on/off
@@ -1593,14 +1593,14 @@ export class ZoomDevice {
                     this.currentPatch.effectSettings[this._currentEffectSlot].enabled = this._currentEffectParameterValue === 1;
                 }
                 else {
-                    shouldLog(LogLevel.Warning) && console.warn(`Received invalid effect edit parameters. this._currentEffectSlot: ${this._currentEffectSlot}, this._currentEffectParameterNumber: ${this._currentEffectParameterNumber}`);
-                    shouldLog(LogLevel.Warning) && console.warn(`curentPatch: ${this.currentPatch}, effectSettings: ${this.currentPatch?.effectSettings}, ` +
+                    log(LogLevel.Warning, "ZoomDevice", `Received invalid effect edit parameters. this._currentEffectSlot: ${this._currentEffectSlot}, this._currentEffectParameterNumber: ${this._currentEffectParameterNumber}`);
+                    log(LogLevel.Warning, "ZoomDevice", `curentPatch: ${this.currentPatch}, effectSettings: ${this.currentPatch?.effectSettings}, ` +
                         `this.currentPatch.effectSettings.length: ${this.currentPatch?.effectSettings?.length}`);
                 }
             }
             else if (this._currentEffectParameterNumber === 1) {
                 // This hasn't been observed before, so we should investigate why it happened
-                shouldLog(LogLevel.Warning) && console.warn(`Received effect edit parameter number 1. this._currentEffectSlot: ${this._currentEffectSlot}. Investigate.`);
+                log(LogLevel.Warning, "ZoomDevice", `Received effect edit parameter number 1. this._currentEffectSlot: ${this._currentEffectSlot}. Investigate.`);
             }
             else {
                 let parameterIndex = this._currentEffectParameterNumber - 2;
@@ -1609,8 +1609,8 @@ export class ZoomDevice {
                     this.currentPatch.effectSettings[this._currentEffectSlot].parameters[parameterIndex] = this._currentEffectParameterValue;
                 }
                 else {
-                    shouldLog(LogLevel.Warning) && console.warn(`Received invalid effect edit parameters. this._currentEffectSlot: ${this._currentEffectSlot}, this._currentEffectParameterNumber: ${this._currentEffectParameterNumber}`);
-                    shouldLog(LogLevel.Warning) && console.warn(`curentPatch: ${this.currentPatch}, effectSettings: ${this.currentPatch?.effectSettings}, ` +
+                    log(LogLevel.Warning, "ZoomDevice", `Received invalid effect edit parameters. this._currentEffectSlot: ${this._currentEffectSlot}, this._currentEffectParameterNumber: ${this._currentEffectParameterNumber}`);
+                    log(LogLevel.Warning, "ZoomDevice", `curentPatch: ${this.currentPatch}, effectSettings: ${this.currentPatch?.effectSettings}, ` +
                         `this.currentPatch.effectSettings.length: ${this.currentPatch?.effectSettings?.length}, ` +
                         `this.currentPatch.effectSettings[${parameterIndex}].parameters.length: ${this.currentPatch?.effectSettings?.[parameterIndex]?.parameters?.length}`);
                 }
@@ -1640,8 +1640,8 @@ export class ZoomDevice {
             }
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.patchDumpForCurrentPatchV1) || this.isMessageType(data, ZoomDevice.messageTypes.patchDumpForCurrentPatchV2)) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received patch dump for current patch, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received patch dump for current patch, raw: ${bytesToHexString(data, " ")}`);
             this._currentPatch = undefined;
             this._currentPatchData = data;
             let numEffectsMismatch = false;
@@ -1649,7 +1649,7 @@ export class ZoomDevice {
             if (!this._msogPatchNumEffectsMismatchFixRequest && this.isMessageType(data, ZoomDevice.messageTypes.patchDumpForCurrentPatchV1) && this.currentPatch !== undefined)
                 [numEffectsMismatch, countNumEffects] = this.currentPatch.msNumEffectsMismatch();
             if (numEffectsMismatch) {
-                shouldLog(LogLevel.Warning) && console.warn(`Effect count mismatch in patch "${this.currentPatch?.name}": msogNumEffects (${this.currentPatch?.numEffects}) != number of IDs that are not zero (${countNumEffects}). Requesting patch again.`);
+                log(LogLevel.Warning, "ZoomDevice", `Effect count mismatch in patch "${this.currentPatch?.name}": msogNumEffects (${this.currentPatch?.numEffects}) != number of IDs that are not zero (${countNumEffects}). Requesting patch again.`);
                 this._msogPatchNumEffectsMismatchFixRequest = true;
                 // This is probably a bug in the MSOG pedals.
                 // It takes a short time for the pedal to update the patch with the correct
@@ -1667,22 +1667,22 @@ export class ZoomDevice {
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.storeCurrentPatchToMemorySlotV1)) {
             // Current (edit) patch stored to memory slot on device (MS series)
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received confirmation that current edit patch was stored to patch number ${data[7]} was stored, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received confirmation that current edit patch was stored to patch number ${data[7]} was stored, raw: ${bytesToHexString(data, " ")}`);
             let memorySlot = data[8];
             if (this._autoRequestCurrentPatch) {
                 if (this._autoRequestPatchForMemorySlotInProgress)
-                    shouldLog(LogLevel.Warning) && console.warn(`Auto-requesting patch from memory slot ${memorySlot} while auto request already in progress for another memory slot ${this._autoRequestPatchMemorySlotNumber}`);
+                    log(LogLevel.Warning, "ZoomDevice", `Auto-requesting patch from memory slot ${memorySlot} while auto request already in progress for another memory slot ${this._autoRequestPatchMemorySlotNumber}`);
                 if (memorySlot !== this.currentMemorySlotNumber)
-                    shouldLog(LogLevel.Warning) && console.warn(`Got a message about current patch being stored to memory slot ${memorySlot}, but that is not the current memory slot number ${this.currentMemorySlotNumber}`);
+                    log(LogLevel.Warning, "ZoomDevice", `Got a message about current patch being stored to memory slot ${memorySlot}, but that is not the current memory slot number ${this.currentMemorySlotNumber}`);
                 this._autoRequestPatchForMemorySlotInProgress = true;
                 this._autoRequestPatchMemorySlotNumber = memorySlot;
                 this.requestPatchFromMemorySlot(memorySlot);
             }
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.patchDumpForMemoryLocationV1)) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received patch dump for patch number ${data[7]}, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received patch dump for patch number ${data[7]}, raw: ${bytesToHexString(data, " ")}`);
             let autoRequestInProgress = this._autoRequestPatchForMemorySlotInProgress;
             this._autoRequestPatchForMemorySlotInProgress = false;
             let autoRequestPatchMemorySlotNumber = this._autoRequestPatchMemorySlotNumber;
@@ -1692,13 +1692,13 @@ export class ZoomDevice {
             this.emitPatchChangedEvent(memorySlot);
             if (autoRequestInProgress) {
                 if (memorySlot !== autoRequestPatchMemorySlotNumber)
-                    shouldLog(LogLevel.Warning) && console.warn(`Auto-requested patch dump for memory slot ${autoRequestPatchMemorySlotNumber} but received patch dump for memory slot ${memorySlot} instead`);
+                    log(LogLevel.Warning, "ZoomDevice", `Auto-requested patch dump for memory slot ${autoRequestPatchMemorySlotNumber} but received patch dump for memory slot ${memorySlot} instead`);
                 this.emitMemorySlotChangedEvent();
             }
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.patchDumpForMemoryLocationV2)) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received patch dump for bank number ${data[7] + (data[8] << 7)} ` +
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received patch dump for bank number ${data[7] + (data[8] << 7)} ` +
                     `program number ${data[9] + (data[10] << 7)}, raw: ${bytesToHexString(data, " ")}`);
             let bank = data[7] + ((data[8] & 0b0111111) >> 7);
             let program = data[9] + ((data[10] & 0b0111111) >> 7);
@@ -1709,10 +1709,10 @@ export class ZoomDevice {
             this.emitPatchChangedEvent(memorySlot);
         }
         else if (this.isMessageType(data, ZoomDevice.messageTypes.screensForCurrentPatch)) {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received screens for current patch, raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received screens for current patch, raw: ${bytesToHexString(data, " ")}`);
             let useIncomingScreens = this.currentPatch === undefined || !this.allEffectsAreMapped(this.currentPatch);
-            shouldLog(LogLevel.Info) && console.log(`useIncomingScreens: ${useIncomingScreens}`);
+            log(LogLevel.Info, "ZoomDevice", `useIncomingScreens: ${useIncomingScreens}`);
             if (useIncomingScreens) {
                 // we only use the incoming screen message if we don't have an effectIDMap
                 this._currentScreenCollectionData = data;
@@ -1732,21 +1732,21 @@ export class ZoomDevice {
         else if (this.isMessageType(data, ZoomDevice.messageTypes.bankAndProgramNumberV2)) {
             let bank = data[8] + (data[9] << 7);
             let program = data[10] + (data[11] << 7);
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received bank and program number, bank number ${bank} ` +
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received bank and program number, bank number ${bank} ` +
                     `program number ${program}, raw: ${bytesToHexString(data, " ")}`);
             let changed = this.syncStateWithNewBankAndProgram(bank, program);
             if (changed)
                 this.emitMemorySlotChangedEvent();
         }
         else {
-            if (log)
-                shouldLog(LogLevel.Info) && console.log(`${performance.now().toFixed(1)} Received unknown message raw: ${bytesToHexString(data, " ")}`);
+            if (verboseLog)
+                log(LogLevel.Info, "ZoomDevice", `${performance.now().toFixed(1)} Received unknown message raw: ${bytesToHexString(data, " ")}`);
         }
     }
     async updateScreens(sync = false) {
         if (this.currentPatch === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`Can't update screens for device ${this.deviceName} because currentPatch is undefined`);
+            log(LogLevel.Warning, "ZoomDevice", `Can't update screens for device ${this.deviceName} because currentPatch is undefined`);
             return undefined;
         }
         let screens = undefined;
@@ -1775,14 +1775,14 @@ export class ZoomDevice {
         reply = await this.sendCommandAndGetReply(hexStringToUint8Array(command + parameters), (received) => partialArrayMatch(received, hexStringToUint8Array(`F0 52 00 ${this._zoomDeviceIdString} ${expectedReply}`)), null, null, probeTimeoutMilliseconds);
         if (reply === undefined && retryWithEditMode) {
             // FIXME: Untested code
-            shouldLog(LogLevel.Info) && console.log(`Probing for command "${command}" didn't succeed. Retrying with parameter edit enabled.`);
+            log(LogLevel.Info, "ZoomDevice", `Probing for command "${command}" didn't succeed. Retrying with parameter edit enabled.`);
             this.parameterEditEnable();
             reply = await this.sendCommandAndGetReply(hexStringToUint8Array(command + parameters), (received) => partialArrayMatch(received, hexStringToUint8Array(`F0 52 00 ${this._zoomDeviceIdString} ${expectedReply}`)), null, null, probeTimeoutMilliseconds);
             if (reply === undefined) {
-                shouldLog(LogLevel.Info) && console.log(`Probing for command "${command}" failed again.`);
+                log(LogLevel.Info, "ZoomDevice", `Probing for command "${command}" failed again.`);
             }
             else {
-                shouldLog(LogLevel.Info) && console.log(`Probing for command "${command}" succeeded with parameter edit enabled.`);
+                log(LogLevel.Info, "ZoomDevice", `Probing for command "${command}" succeeded with parameter edit enabled.`);
             }
             this.parameterEditDisable();
         }
@@ -1795,7 +1795,7 @@ export class ZoomDevice {
         let command;
         let expectedReply;
         let reply;
-        shouldLog(LogLevel.Info) && console.log(`Probing started for device ${this.deviceName}`);
+        log(LogLevel.Info, "ZoomDevice", `Probing started for device ${this.deviceName}`);
         // Some of the probes will fail if parameter edit is not enabled
         this.parameterEditEnable();
         command = ZoomDevice.messageTypes.sayHi.str;
@@ -1914,7 +1914,7 @@ export class ZoomDevice {
                     this._bankAndProgramSentOnUpdate = true;
                 }
                 else {
-                    shouldLog(LogLevel.Warning) && console.warn(`Set bank and program to (${bank}, ${program}) but got back (${newBank}, ${newProgram})`);
+                    log(LogLevel.Warning, "ZoomDevice", `Set bank and program to (${bank}, ${program}) but got back (${newBank}, ${newProgram})`);
                     this._bankAndProgramSentOnUpdate = false;
                 }
             }
@@ -1929,7 +1929,7 @@ export class ZoomDevice {
             if (this.currentPatch !== undefined)
                 this.uploadPatchToCurrentPatch(this.currentPatch);
             else
-                shouldLog(LogLevel.Warning) && console.warn(`Current patch is undefined after probing for bank and program`);
+                log(LogLevel.Warning, "ZoomDevice", `Current patch is undefined after probing for bank and program`);
         }
         // reply = await this.sendCommandAndGetReply(hexStringToUint8Array(command), (received) => 
         //   partialArrayMatch(received, hexStringToUint8Array(`C0`)), null, null, probeTimeoutMilliseconds); 
@@ -1959,28 +1959,28 @@ export class ZoomDevice {
         this._maxNumEffects = 6; // FIXME: Support MS-60B and other pedals with different number of max effects
         if (shouldLog(LogLevel.Info)) {
             let sortedMap = new Map([...this._supportedCommands.entries()].sort((a, b) => a[0].replaceAll(" ", "").padEnd(2, "00") > b[0].replaceAll(" ", "").padEnd(2, "00") ? 1 : -1));
-            console.log("Probing summery:");
+            log(LogLevel.Info, "ZoomDevice", "Probing summery:");
             for (let [command, supportType] of sortedMap) {
-                console.log(`  ${command.padEnd(8)} -> ${supportType == SupportType.Supported ? "  Supported" : "Unsupported"}`);
+                log(LogLevel.Info, "ZoomDevice", `  ${command.padEnd(8)} -> ${supportType == SupportType.Supported ? "  Supported" : "Unsupported"}`);
             }
-            console.log(`  Number of patches:       ${this._numPatches}`);
-            console.log(`  Patch length:            ${this._patchLength}`);
-            console.log(`  Patches per bank:        ${this._patchesPerBank == -1 ? "Unknown" : this._patchesPerBank}`);
-            console.log(`  CRC bytes v1 mem patch:  ${this._patchDumpForMemoryLocationV1CRCBytes}`);
-            console.log(`  PTCF format support:     ${this._ptcfPatchFormatSupported}`);
-            console.log(`  PTCF name length:        ${this._ptcfNameLength}`);
-            console.log(`  Bank + prog change sent on update: ${this._bankAndProgramSentOnUpdate}`);
-            console.log(`  Num parameters per page: ${this._numParametersPerPage}`);
-            console.log(`  Is MSOG device:          ${this._isMSOG}`);
+            log(LogLevel.Info, "ZoomDevice", `  Number of patches:       ${this._numPatches}`);
+            log(LogLevel.Info, "ZoomDevice", `  Patch length:            ${this._patchLength}`);
+            log(LogLevel.Info, "ZoomDevice", `  Patches per bank:        ${this._patchesPerBank == -1 ? "Unknown" : this._patchesPerBank}`);
+            log(LogLevel.Info, "ZoomDevice", `  CRC bytes v1 mem patch:  ${this._patchDumpForMemoryLocationV1CRCBytes}`);
+            log(LogLevel.Info, "ZoomDevice", `  PTCF format support:     ${this._ptcfPatchFormatSupported}`);
+            log(LogLevel.Info, "ZoomDevice", `  PTCF name length:        ${this._ptcfNameLength}`);
+            log(LogLevel.Info, "ZoomDevice", `  Bank + prog change sent on update: ${this._bankAndProgramSentOnUpdate}`);
+            log(LogLevel.Info, "ZoomDevice", `  Num parameters per page: ${this._numParametersPerPage}`);
+            log(LogLevel.Info, "ZoomDevice", `  Is MSOG device:          ${this._isMSOG}`);
         }
         this.parameterEditDisable();
-        shouldLog(LogLevel.Info) && console.log(`Probing ended for device ${this.deviceName}`);
+        log(LogLevel.Info, "ZoomDevice", `Probing ended for device ${this.deviceName}`);
         this._disableMidiHandlers = false;
     }
     get effectIDMap() {
         let map = ZoomDevice._effectIDMaps.get(this.deviceInfo.deviceName);
         if (map === undefined) {
-            shouldLog(LogLevel.Error) && console.error(`No effect ID map found for device ${this.deviceInfo.deviceName}`);
+            log(LogLevel.Error, "ZoomDevice", `No effect ID map found for device ${this.deviceInfo.deviceName}`);
             return undefined;
         }
         return map;
@@ -2016,7 +2016,7 @@ export class ZoomDevice {
                     return [rawValue, parameterMapping.max];
             }
         }
-        shouldLog(LogLevel.Info) && console.log(`No mapping for effect ${effectID.toString(16).padStart(8, "0")}, parameter ${parameterNumber}, value ${valueString}`);
+        log(LogLevel.Info, "ZoomDevice", `No mapping for effect ${effectID.toString(16).padStart(8, "0")}, parameter ${parameterNumber}, value ${valueString}`);
         return [0, -1];
     }
     getStringFromRawParameterValue(effectID, parameterNumber, rawValue) {
@@ -2045,7 +2045,7 @@ export class ZoomDevice {
     }
     static setEffectDefaultsForPatch(patch, effectIDMap, slotNumber, parameterIndex) {
         if (patch.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`patch.effectSettings == null for patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomDevice", `patch.effectSettings == null for patch ${patch.name}`);
             return;
         }
         let slotStart = slotNumber ?? 0;
@@ -2057,11 +2057,11 @@ export class ZoomDevice {
     static setDefaultsForEffect(effectSettings, effectIDMap, parameterIndex) {
         let effectMapping = effectIDMap.get(effectSettings.id);
         if (effectMapping === undefined) {
-            shouldLog(LogLevel.Warning) && console.warn(`No mapping found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")}`);
+            log(LogLevel.Warning, "ZoomDevice", `No mapping found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")}`);
             return;
         }
         if (parameterIndex !== undefined && parameterIndex >= effectMapping.parameters.length) {
-            shouldLog(LogLevel.Error) && console.error(`parameterIndex (${parameterIndex}) >= number of parameters in map for effect ID ${effectSettings.id.toString(16).padStart(8, "0")}`);
+            log(LogLevel.Error, "ZoomDevice", `parameterIndex (${parameterIndex}) >= number of parameters in map for effect ID ${effectSettings.id.toString(16).padStart(8, "0")}`);
             return;
         }
         let parameterStart = parameterIndex ?? 0;
@@ -2071,11 +2071,11 @@ export class ZoomDevice {
         for (let parameter = parameterStart; parameter < parameterEnd; parameter++) {
             let parameterMapping = effectMapping.parameters[parameter];
             if (parameterMapping === undefined) {
-                shouldLog(LogLevel.Warning) && console.warn(`No mapping found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")} parameter ${parameter}`);
+                log(LogLevel.Warning, "ZoomDevice", `No mapping found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")} parameter ${parameter}`);
                 continue;
             }
             if (parameterMapping.default === undefined) {
-                shouldLog(LogLevel.Warning) && console.warn(`No default value found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")} parameter ${parameter}`);
+                log(LogLevel.Warning, "ZoomDevice", `No default value found for effect ID ${effectSettings.id.toString(16).padStart(8, "0")} parameter ${parameter}`);
                 continue;
             }
             let parameterValue = parameterMapping.default;
@@ -2259,18 +2259,18 @@ export class ZoomDevice {
         let patch = ZoomPatch.createEmptyPTCFPatch(this._ptcfNameLength);
         this.uploadPatchToCurrentPatch(patch, false);
         if (patch.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error("patch.effectSettings === null. This is a bug.");
+            log(LogLevel.Error, "ZoomDevice", "patch.effectSettings === null. This is a bug.");
             this._disableMidiHandlers = false;
             this._isMappingParameters = false;
             return undefined;
         }
         if (patch.effectSettings.length < 1) {
-            shouldLog(LogLevel.Error) && console.error("patch.effectSettings.length < 1. Aborting mapping.");
+            log(LogLevel.Error, "ZoomDevice", "patch.effectSettings.length < 1. Aborting mapping.");
             this._disableMidiHandlers = false;
             this._isMappingParameters = false;
             return undefined;
         }
-        shouldLog(LogLevel.Info) && console.log(`*** Mapping started at ${performance.now().toFixed(1)}, using current patch ${patch.name} ***`);
+        log(LogLevel.Info, "ZoomDevice", `*** Mapping started at ${performance.now().toFixed(1)}, using current patch ${patch.name} ***`);
         let startTime = performance.now();
         let logLevel = getLogLevel();
         // if (logLevel & LogLevel.Midi)
@@ -2304,7 +2304,7 @@ export class ZoomDevice {
             patch.effectSettings[0].id = id;
             //this.uploadPatchToCurrentPatch(patch, false);
             // let effectSettings: EffectSettings = patch.effectSettings[0];
-            shouldLog(LogLevel.Info) && console.log(`Starting mapping for effect ${counter.toString().padStart(3, "0")} / ${numEffects} "${effectList.get(id)}" (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
+            log(LogLevel.Info, "ZoomDevice", `Starting mapping for effect ${counter.toString().padStart(3, "0")} / ${numEffects} "${effectList.get(id)}" (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
             let id7 = `${(id & 0x7f).toString(16).padStart(2, "0")}${((id >> 7) & 0x7f).toString(16).padStart(2, "0")}` +
                 `${((id >> 14) & 0x7f).toString(16).padStart(2, "0")}${((id >> 21) & 0x7f).toString(16).padStart(2, "0")}${((id >> 28) & 0x0f).toString(16).padStart(2, "0")}`;
             let id7c = new Uint8Array(ZoomDevice.messageTypes.parameterValueV2.bytes.length + 7);
@@ -2312,10 +2312,10 @@ export class ZoomDevice {
             id7c.set(hexStringToUint8Array("0001" + id7), ZoomDevice.messageTypes.parameterValueV2.bytes.length);
             let reply = await this.sendCommandAndGetReply(id7c, received => true);
             if (reply === undefined)
-                shouldLog(LogLevel.Warning) && console.warn(`Unable to change effect for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
+                log(LogLevel.Warning, "ZoomDevice", `Unable to change effect for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
             let downloadedPatch = await this.downloadCurrentPatch();
             if (downloadedPatch === undefined || downloadedPatch.effectSettings === null || downloadedPatch.effectSettings.length < 1) {
-                shouldLog(LogLevel.Warning) && console.warn(`Unable to get parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
+                log(LogLevel.Warning, "ZoomDevice", `Unable to get parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
                 counter++;
                 continue;
             }
@@ -2335,14 +2335,14 @@ export class ZoomDevice {
             // }
             let screenCollection = await this.downloadScreens(effectSlot, effectSlot);
             if (screenCollection === undefined) {
-                shouldLog(LogLevel.Error) && console.error("*** Failed to download screens while verifying patch, aborting mapping ***");
+                log(LogLevel.Error, "ZoomDevice", "*** Failed to download screens while verifying patch, aborting mapping ***");
                 setLogLevel(logLevel); // enable MIDI logging again
                 this._disableMidiHandlers = false;
                 this._isMappingParameters = false;
                 return undefined;
             }
             if (screenCollection.screens.length < 1) {
-                shouldLog(LogLevel.Warning) && console.warn(`*** screenCollection.screens.length ${screenCollection.screens.length} is out of range while verifying patch, skipping mapping for effect ***`);
+                log(LogLevel.Warning, "ZoomDevice", `*** screenCollection.screens.length ${screenCollection.screens.length} is out of range while verifying patch, skipping mapping for effect ***`);
                 counter++;
                 continue;
                 // setLogLevel(logLevel); // enable MIDI logging again
@@ -2352,8 +2352,8 @@ export class ZoomDevice {
             }
             let screen = screenCollection.screens[0].parameters;
             if (screen[1].name.toUpperCase() !== effectList.get(id)?.toUpperCase()) {
-                shouldLog(LogLevel.Warning) && console.warn(`*** screen[1].name "${screen[1].name}" does not match ${effectListName}.get(id) "${effectList.get(id)}" while verifying patch, not skipping effect ***`);
-                shouldLog(LogLevel.Warning) && console.warn(`Screen: ${JSON.stringify(screen)}`);
+                log(LogLevel.Warning, "ZoomDevice", `*** screen[1].name "${screen[1].name}" does not match ${effectListName}.get(id) "${effectList.get(id)}" while verifying patch, not skipping effect ***`);
+                log(LogLevel.Warning, "ZoomDevice", `Screen: ${JSON.stringify(screen)}`);
                 // Note: In some cases this is just a slight mismatch between the effect name and the screen name, e.g. "Orange Limi" vs "Orange Lim"
                 // But it could also mean that the effect was completely missing from the pedal, which should be investigated.
                 // This means that the resulting mapping file should be exained to see if the differences between name and screenName are significant.
@@ -2369,16 +2369,16 @@ export class ZoomDevice {
                 parameters: new Array()
             };
             for (let paramNumber = 2; paramNumber - 2 < effectSettings.parameters.length; paramNumber++) {
-                shouldLog(LogLevel.Info) && console.log(`Mapping parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")}), paramNumber ${(paramNumber).toString().padStart(2, " ")} of ${effectSettings.parameters.length + 2 - 1}`);
+                log(LogLevel.Info, "ZoomDevice", `Mapping parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")}), paramNumber ${(paramNumber).toString().padStart(2, " ")} of ${effectSettings.parameters.length + 2 - 1}`);
                 // paramNumber = paramIndex + 2;
                 let mappingsForParameterValue;
                 [mappingsForParameterValue, error] = await mapParameter(this, effectSlot, paramNumber);
                 if (error) {
-                    shouldLog(LogLevel.Error) && console.error(`Error mapping parameter ${paramNumber} for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
+                    log(LogLevel.Error, "ZoomDevice", `Error mapping parameter ${paramNumber} for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")})`);
                     break;
                 }
                 if (mappingsForParameterValue === undefined) {
-                    shouldLog(LogLevel.Info) && console.log(`Got no reply for parameter ${paramNumber}. Number of parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")}) is ${mappingsForEffect.parameters.length}`);
+                    log(LogLevel.Info, "ZoomDevice", `Got no reply for parameter ${paramNumber}. Number of parameters for effect ${effectList.get(id)} (0x${id.toString(16).toUpperCase().padStart(8, "0")}) is ${mappingsForEffect.parameters.length}`);
                     break;
                 }
                 let paramIndex = paramNumber - 2;
@@ -2390,7 +2390,7 @@ export class ZoomDevice {
             if (error) {
                 break;
             }
-            shouldLog(LogLevel.Info) && console.log(`Mapping done for effect ${counter.toString().padStart(3, "0")} "${effectList.get(id)}" (0x${id.toString(16).toUpperCase().padStart(8, "0")}), mapped ${mappingsForEffect.parameters.length} of ${effectSettings.parameters.length - 1} parameters`);
+            log(LogLevel.Info, "ZoomDevice", `Mapping done for effect ${counter.toString().padStart(3, "0")} "${effectList.get(id)}" (0x${id.toString(16).toUpperCase().padStart(8, "0")}), mapped ${mappingsForEffect.parameters.length} of ${effectSettings.parameters.length - 1} parameters`);
             mappings[id.toString(16).padStart(8, "0")] = mappingsForEffect;
             counter++;
             await sleepForAWhile(200); // let the chrome console catch up ???
@@ -2399,13 +2399,13 @@ export class ZoomDevice {
         let minutes = Math.floor(timeSpent / (1000 * 60));
         let seconds = Math.floor((timeSpent % (1000 * 60)) / 1000);
         if (error)
-            shouldLog(LogLevel.Error) && console.error(`*** Mapping ended with errors after ${timeSpent / 1000} seconds ******`);
+            log(LogLevel.Error, "ZoomDevice", `*** Mapping ended with errors after ${timeSpent / 1000} seconds ******`);
         else if (this._cancelMapping) {
             this._cancelMapping = false;
-            shouldLog(LogLevel.Info) && console.log(`*** Mapping cancelled at ${performance.now().toFixed(1)} after ${minutes} minutes ${seconds} seconds ***`);
+            log(LogLevel.Info, "ZoomDevice", `*** Mapping cancelled at ${performance.now().toFixed(1)} after ${minutes} minutes ${seconds} seconds ***`);
         }
         else {
-            shouldLog(LogLevel.Info) && console.log(`*** Mapping successful at ${performance.now().toFixed(1)} after ${minutes} minutes ${seconds} seconds ***`);
+            log(LogLevel.Info, "ZoomDevice", `*** Mapping successful at ${performance.now().toFixed(1)} after ${minutes} minutes ${seconds} seconds ***`);
         }
         //shouldLog(LogLevel.Info) && console.log(JSON.stringify(mappings, null, 2));
         //this.uploadCurrentPatch(originalCurrentPatch);
@@ -2416,7 +2416,7 @@ export class ZoomDevice {
         async function mapParameter(device, effectSlot, paramNumber) {
             let mappingsForParameterValue = undefined;
             let error = false;
-            let log = false;
+            let verboseLog = false;
             // If the param value on the pedal is already 0, we won't get a reply when we start probing (at value 0).
             // So before we start probing, we set param value to 1, that way we should always get a reply for value 0,
             // if the paramNumber is valid.
@@ -2428,13 +2428,13 @@ export class ZoomDevice {
             for (paramValue = 0; paramValue < maxParamValue; paramValue++) {
                 setParamBuffer(paramBuffer, effectSlot, paramNumber, paramValue);
                 command.set(paramBuffer, ZoomDevice.messageTypes.parameterValueV2.bytes.length);
-                if (log)
-                    shouldLog(LogLevel.Info) && console.log(`Sending effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
+                if (verboseLog)
+                    log(LogLevel.Info, "ZoomDevice", `Sending effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
                 let reply = await device.sendCommandAndGetReply(command, received => {
                     let commandMatch = device.zoomCommandMatch(received, ZoomDevice.messageTypes.parameterValueAcceptedV2.bytes);
                     if (!commandMatch) {
-                        shouldLog(LogLevel.Info) && console.log(`Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
-                        shouldLog(LogLevel.Warning) && console.warn("Received an unexpeced reply. Investigate.");
+                        log(LogLevel.Info, "ZoomDevice", `Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
+                        log(LogLevel.Warning, "ZoomDevice", "Received an unexpeced reply. Investigate.");
                         return false;
                     }
                     let offset = 4 + ZoomDevice.messageTypes.parameterValueAcceptedV2.bytes.length;
@@ -2442,25 +2442,25 @@ export class ZoomDevice {
                     let receivedParamNumber = received[offset + 1] & 0b01111111;
                     let receivedParamValue = (received[offset + 2] & 0b01111111) + ((received[offset + 3] & 0b01111111) << 7);
                     if (receivedEffectSlot !== effectSlot || receivedParamNumber !== paramNumber || receivedParamValue !== paramValue) {
-                        if (log)
-                            shouldLog(LogLevel.Info) && console.log(`Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
-                        if (log)
-                            shouldLog(LogLevel.Info) && console.log(`Received effect slot: ${receivedEffectSlot}, param number: ${receivedParamNumber}, param value: ${receivedParamValue}`);
-                        if (log)
-                            shouldLog(LogLevel.Info) && console.log(`Reply mismatch: ${receivedEffectSlot}, ${receivedParamNumber}, ${receivedParamValue} != ${effectSlot}, ${paramNumber}, ${paramValue}`);
-                        if (log)
-                            shouldLog(LogLevel.Info) && console.log("Reply mismatch usually means that the parameter number is out of range (no more parameters)");
+                        if (verboseLog)
+                            log(LogLevel.Info, "ZoomDevice", `Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
+                        if (verboseLog)
+                            log(LogLevel.Info, "ZoomDevice", `Received effect slot: ${receivedEffectSlot}, param number: ${receivedParamNumber}, param value: ${receivedParamValue}`);
+                        if (verboseLog)
+                            log(LogLevel.Info, "ZoomDevice", `Reply mismatch: ${receivedEffectSlot}, ${receivedParamNumber}, ${receivedParamValue} != ${effectSlot}, ${paramNumber}, ${paramValue}`);
+                        if (verboseLog)
+                            log(LogLevel.Info, "ZoomDevice", "Reply mismatch usually means that the parameter number is out of range (no more parameters)");
                         return false;
                     }
                     return true;
                 });
                 if (reply === undefined) {
-                    if (log)
-                        shouldLog(LogLevel.Info) && console.log(`Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
-                    if (log)
-                        shouldLog(LogLevel.Info) && console.log("Timeout... Which usually means that the parameter value is out of range (no more values)");
-                    if (log)
-                        shouldLog(LogLevel.Info) && console.log(`Max param value for parameter ${paramNumber} is ${paramValue - 1}`);
+                    if (verboseLog)
+                        log(LogLevel.Info, "ZoomDevice", `Sent     effect slot: ${effectSlot}, param number: ${paramNumber}, param value: ${paramValue}`);
+                    if (verboseLog)
+                        log(LogLevel.Info, "ZoomDevice", "Timeout... Which usually means that the parameter value is out of range (no more values)");
+                    if (verboseLog)
+                        log(LogLevel.Info, "ZoomDevice", `Max param value for parameter ${paramNumber} is ${paramValue - 1}`);
                     if (paramValue === 0)
                         mappingsForParameterValue = undefined;
                     break;
@@ -2469,21 +2469,21 @@ export class ZoomDevice {
                     // request screens
                     let screenCollection = await device.downloadScreens(effectSlot, effectSlot);
                     if (screenCollection === undefined) {
-                        shouldLog(LogLevel.Error) && console.error("*** Failed to download screens, aborting mapping ***");
+                        log(LogLevel.Error, "ZoomDevice", "*** Failed to download screens, aborting mapping ***");
                         error = true;
                         mappingsForParameterValue = undefined;
                         break;
                     }
                     if (screenCollection.screens.length != 1) {
-                        shouldLog(LogLevel.Error) && console.error(`*** screenCollection.screens.length ${screenCollection.screens.length} is out of range, aborting mapping ***`);
+                        log(LogLevel.Error, "ZoomDevice", `*** screenCollection.screens.length ${screenCollection.screens.length} is out of range, aborting mapping ***`);
                         error = true;
                         mappingsForParameterValue = undefined;
                         break;
                     }
                     let screen = screenCollection.screens[0];
                     if (paramNumber >= screen.parameters.length) {
-                        shouldLog(LogLevel.Warning) && console.warn(`Warning: paramNumber (${paramNumber}) >= screen.parameters.length (${screen.parameters.length}), using (patch) paramValue as textValue. Investigate.`);
-                        shouldLog(LogLevel.Warning) && console.warn(`           Unknown = ${paramValue} -> "${paramValue.toString()}"`);
+                        log(LogLevel.Warning, "ZoomDevice", `Warning: paramNumber (${paramNumber}) >= screen.parameters.length (${screen.parameters.length}), using (patch) paramValue as textValue. Investigate.`);
+                        log(LogLevel.Warning, "ZoomDevice", `           Unknown = ${paramValue} -> "${paramValue.toString()}"`);
                         if (mappingsForParameterValue === undefined)
                             mappingsForParameterValue = { name: `Hidden-${hiddenParamCount++}`, values: new Array(), max: 0, valuesUCNSP: null };
                         mappingsForParameterValue.values.push(paramValue.toString());
@@ -2493,13 +2493,13 @@ export class ZoomDevice {
                     // Map Zoom's byte codes to HTML/unicode characters. This is also done in htmltools.ts
                     // let valueString = parameter.valueString.replace(/\x16/g, "&#119138;").replace(/\x17/g, "&#119137;").replace(/\x18/g, "&#119136;").replace(/\x19/g, "&#119135;").replace(/\x1A/g, "&#119134;");
                     let valueString = ZoomPatch.noteByteCodeToHtml(parameter.valueString);
-                    if (log)
-                        shouldLog(LogLevel.Info) && console.log(`           ${parameter.name} = ${paramValue} -> "${valueString}"`);
+                    if (verboseLog)
+                        log(LogLevel.Info, "ZoomDevice", `           ${parameter.name} = ${paramValue} -> "${valueString}"`);
                     if (mappingsForParameterValue === undefined)
                         mappingsForParameterValue = { name: parameter.name, values: new Array(), max: 0, valuesUCNSP: null };
                     mappingsForParameterValue.values.push(valueString);
-                    if (log)
-                        shouldLog(LogLevel.Info) && console.log(`  Control: ${mappingsForParameterValue.name} = ${paramValue} -> "${mappingsForParameterValue.values[paramValue]}"`);
+                    if (verboseLog)
+                        log(LogLevel.Info, "ZoomDevice", `  Control: ${mappingsForParameterValue.name} = ${paramValue} -> "${mappingsForParameterValue.values[paramValue]}"`);
                 }
             }
             if (mappingsForParameterValue !== undefined)

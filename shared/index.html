@@ -31,6 +31,18 @@
         <button id="btn-backup" class="btn" disabled title="Back up every patch on the pedal to a folder">Backup All</button>
         <button id="btn-save" class="btn" disabled title="Save current patch to a file">Save</button>
         <button id="btn-load" class="btn" disabled title="Load a patch from a file">Load</button>
+        <button id="btn-export-log" class="btn" title="Export diagnostic log">Export Log</button>
+        <label id="log-level-wrap" title="Diagnostic log verbosity">Log:
+          <select id="log-level" class="btn">
+            <option value="off">Off</option>
+            <option value="error">Errors</option>
+            <option value="warning" selected>Warnings</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+            <option value="midi">MIDI</option>
+            <option value="all">All</option>
+          </select>
+        </label>
       </div>
     </header>
 

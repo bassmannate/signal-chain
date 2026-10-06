@@ -1,4 +1,4 @@
-import { shouldLog, LogLevel } from "./Logger.js";
+import { LogLevel, log } from "./Logger.js";
 import { numberToHexString } from "./tools.js";
 export class ZoomScreenParameter {
     name = "";
@@ -108,10 +108,10 @@ export class ZoomScreenCollection {
             if (!(parameterNumber in this.screens[screenNumber].parameters))
                 this.screens[screenNumber].parameters[parameterNumber] = new ZoomScreenParameter();
             if (invertByte !== 0) {
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomScreen.parseScreenData() the mysterious invertByte !== 0 for screen ${screenNumber}, parameter ${parameterNumber}, type ${type}, invertByte "${invertByte}", string: "${str}". Investigate.`);
+                log(LogLevel.Warning, "ZoomScreenInfo", `ZoomScreen.parseScreenData() the mysterious invertByte !== 0 for screen ${screenNumber}, parameter ${parameterNumber}, type ${type}, invertByte "${invertByte}", string: "${str}". Investigate.`);
             }
             if (str === null) {
-                shouldLog(LogLevel.Error) && console.error(`ZoomScreen.parseScreenData() failed to read string for screen ${screenNumber}, parameter ${parameterNumber}, type ${type}, invertByte "${invertByte}"`);
+                log(LogLevel.Error, "ZoomScreenInfo", `ZoomScreen.parseScreenData() failed to read string for screen ${screenNumber}, parameter ${parameterNumber}, type ${type}, invertByte "${invertByte}"`);
                 break;
             }
             str = str.replaceAll("\x00", ""); // strip trailing \x00
@@ -133,7 +133,7 @@ export class ZoomScreenCollection {
                 this.screens[screenNumber].parameters[parameterNumber].invert = true;
             }
             if (type !== 0 && type !== 1 && type !== 3 && type !== 7)
-                shouldLog(LogLevel.Warning) && console.warn(`ZoomScreen.parseScreenData() type "${type}" is unknown for screen ${screenNumber}, parameter ${parameterNumber}, invert byte "${invertByte}", string: "${str}". Investigate.`);
+                log(LogLevel.Warning, "ZoomScreenInfo", `ZoomScreen.parseScreenData() type "${type}" is unknown for screen ${screenNumber}, parameter ${parameterNumber}, invert byte "${invertByte}", string: "${str}". Investigate.`);
         }
         // If any screens are missing, insert empty screens
         // If a BPM module is inserted in the effect chain, the corresponding screen will be missing from the data
@@ -145,7 +145,7 @@ export class ZoomScreenCollection {
     }
     setFromPatchAndMap(patch, effectsMap) {
         if (patch.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`patch.effectSettings == null for patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomScreenInfo", `patch.effectSettings == null for patch ${patch.name}`);
             return undefined;
         }
         let numEffects = patch.numEffects ?? patch.effectSettings.length;
@@ -153,7 +153,7 @@ export class ZoomScreenCollection {
             let effectSettings = patch.effectSettings[effectSlot];
             let effectMap = effectsMap.get(effectSettings.id);
             if (effectMap === undefined) {
-                shouldLog(LogLevel.Error) && console.error(`Unable to find mapping for effect id ${numberToHexString(effectSettings.id)} in effectSlot ${effectSlot} in patch ${patch.name}`);
+                log(LogLevel.Error, "ZoomScreenInfo", `Unable to find mapping for effect id ${numberToHexString(effectSettings.id)} in effectSlot ${effectSlot} in patch ${patch.name}`);
                 return undefined;
             }
             let screen = new ZoomScreen();
@@ -177,17 +177,17 @@ export class ZoomScreenCollection {
     }
     setEffectParameterValue(patch, effectsMap, effectSlot, parameterNumber, value) {
         if (effectSlot >= this.screens.length || parameterNumber >= this.screens[effectSlot].parameters.length) {
-            shouldLog(LogLevel.Error) && console.error(`setEffectParameterValue() effectSlot ${effectSlot} or parameterNumber ${parameterNumber} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `setEffectParameterValue() effectSlot ${effectSlot} or parameterNumber ${parameterNumber} out of range`);
             return false;
         }
         if (patch.effectSettings === null) {
-            shouldLog(LogLevel.Error) && console.error(`patch.effectSettings == null for patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomScreenInfo", `patch.effectSettings == null for patch ${patch.name}`);
             return false;
         }
         let effectSettings = patch.effectSettings[effectSlot];
         let effectMap = effectsMap.get(effectSettings.id);
         if (effectMap === undefined) {
-            shouldLog(LogLevel.Error) && console.error(`Unable to find mapping for effect id ${numberToHexString(effectSettings.id)} in effectSlot ${effectSlot} in patch ${patch.name}`);
+            log(LogLevel.Error, "ZoomScreenInfo", `Unable to find mapping for effect id ${numberToHexString(effectSettings.id)} in effectSlot ${effectSlot} in patch ${patch.name}`);
             return false;
         }
         let screen = this.screens[effectSlot];
@@ -206,16 +206,16 @@ export class ZoomScreenCollection {
             let parameterIndex = parameterNumber - 2;
             valueString = effectMap.parameters[parameterIndex].values[value];
         }
-        shouldLog(LogLevel.Info) && console.log(`Changing effect parameter value from "${parameter.valueString}" to "${valueString}" for effect ${effectMap.name}, parameter ${parameter.name}`);
+        log(LogLevel.Info, "ZoomScreenInfo", `Changing effect parameter value from "${parameter.valueString}" to "${valueString}" for effect ${effectMap.name}, parameter ${parameter.name}`);
         parameter.valueString = valueString;
         return true;
     }
     updateScreenWithParametersFromMap(effectMap, effectSettings, screen) {
         if (effectMap.parameters.length > effectSettings.parameters.length) {
-            shouldLog(LogLevel.Warning) && console.warn(`effectMap.parameters.length ${effectMap.parameters.length} > effectSettings.parameters.length ${effectSettings.parameters.length} for effect ${effectMap.name}`);
+            log(LogLevel.Warning, "ZoomScreenInfo", `effectMap.parameters.length ${effectMap.parameters.length} > effectSettings.parameters.length ${effectSettings.parameters.length} for effect ${effectMap.name}`);
         }
         if (screen.parameters.length < 2) {
-            shouldLog(LogLevel.Error) && console.error(`screen.parameters.length ${screen.parameters.length} < 2 for effect ${effectMap.name}`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screen.parameters.length ${screen.parameters.length} < 2 for effect ${effectMap.name}`);
             return;
         }
         if (screen.parameters.length > 2)
@@ -224,7 +224,7 @@ export class ZoomScreenCollection {
             let value = effectSettings.parameters[paramIndex];
             let parameter = new ZoomScreenParameter();
             if (value >= effectMap.parameters[paramIndex].values.length) {
-                shouldLog(LogLevel.Error) && console.error(`value ${value} >= effectMap.parameters[paramIndex].values.length ${effectMap.parameters[paramIndex].values.length} for effect ${effectMap.name}, parameterIndex ${paramIndex}`);
+                log(LogLevel.Error, "ZoomScreenInfo", `value ${value} >= effectMap.parameters[paramIndex].values.length ${effectMap.parameters[paramIndex].values.length} for effect ${effectMap.name}, parameterIndex ${paramIndex}`);
                 break;
             }
             parameter.name = effectMap.parameters[paramIndex].name;
@@ -234,25 +234,25 @@ export class ZoomScreenCollection {
     }
     deleteScreen(screenNumber) {
         if (screenNumber < 0 || screenNumber >= this.screens.length) {
-            shouldLog(LogLevel.Error) && console.error(`screenNumber ${screenNumber} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screenNumber ${screenNumber} out of range`);
             return;
         }
         this.screens.splice(screenNumber, 1);
     }
     insertScreen(screenNumber, screen) {
         if (screenNumber < 0 || screenNumber > this.screens.length) {
-            shouldLog(LogLevel.Error) && console.error(`screenNumber ${screenNumber} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screenNumber ${screenNumber} out of range`);
             return;
         }
         this.screens.splice(screenNumber, 0, screen);
     }
     swapScreens(screenNumber1, screenNumber2) {
         if (screenNumber1 < 0 || screenNumber1 >= this.screens.length) {
-            shouldLog(LogLevel.Error) && console.error(`screenNumber1 ${screenNumber1} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screenNumber1 ${screenNumber1} out of range`);
             return;
         }
         if (screenNumber2 < 0 || screenNumber2 >= this.screens.length) {
-            shouldLog(LogLevel.Error) && console.error(`screenNumber2 ${screenNumber2} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screenNumber2 ${screenNumber2} out of range`);
             return;
         }
         let tempScreen = this.screens[screenNumber2];
@@ -261,7 +261,7 @@ export class ZoomScreenCollection {
     }
     updateScreen(screenNumber, effectMap, effectSettings) {
         if (screenNumber < 0 || screenNumber >= this.screens.length) {
-            shouldLog(LogLevel.Error) && console.error(`screenNumber ${screenNumber} out of range`);
+            log(LogLevel.Error, "ZoomScreenInfo", `screenNumber ${screenNumber} out of range`);
             return;
         }
         let screen = new ZoomScreen();

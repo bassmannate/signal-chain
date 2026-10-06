@@ -1,5 +1,7 @@
 import { iconSvgFor, categorize } from "./effect-icons.js";
 import { getLogText, log, LogLevel, setLogLevel, getLogLevel, clearLogEntries } from "./lib/Logger.js";
+import { effectIdMapFromJson } from "./lib/ZoomEffectMaps.js";
+import { ZoomDevice as ZoomDeviceClass } from "./lib/ZoomDevice.js";
 
 // Console helper for changing the log level (Option A): open DevTools and run
 //   Logger.setLogLevel(Logger.LogLevel.All)
@@ -402,6 +404,31 @@ function effectInfo(id) {
   return effectMap[key] || null;
 }
 
+/**
+ * Registers the fetched mapping with ZoomDevice's write path.
+ *
+ * loadEffectMapFor() fills the display-side `effectMap` object, but the
+ * write path (Sync to Pedal, knob edits) reads ZoomDevice._effectIDMaps,
+ * keyed by device name - and nothing ever populated it, so every save
+ * logged "No effect ID map found" and wrote zeros. This bridges the two.
+ * Registered under both deviceName and deviceNameUnique: MIDIDeviceManager
+ * appends " #N" to deviceNameUnique when two pedals share a base name.
+ */
+function registerDeviceEffectMap() {
+  if (!device || typeof device.effectIDMap !== "undefined") return;
+  const idMap = effectIdMapFromJson(effectMap);
+  if (idMap.size === 0) {
+    const label = device.deviceName ?? device.deviceInfo?.deviceName ?? "device";
+    status(`Effect map for ${label} is empty - saving may write wrong values.`, true);
+    log(LogLevel.Error, "app", `Effect map for ${label} is empty, not registering write-path map`);
+    return;
+  }
+  const names = new Set(
+    [device.deviceName, device.deviceInfo?.deviceName].filter((n) => typeof n === "string" && n)
+  );
+  ZoomDeviceClass.setEffectIDMap([...names], idMap);
+}
+
 // The BPM block's knob edits patch tempo, not an effect parameter: the pedal
 // stores tempo in PRM2 and broadcasts it as parameterValueV2 slot 100 /
 // parameter 2 (see ZoomDevice.setTempoOnDevice / messageTypes.tempoV2).
@@ -472,6 +499,7 @@ async function connect() {
   if (profile.layout === "chain") {
     device.parameterEditEnable();
     await loadEffectMapFor(profile.pickDataFile(desc), desc.modelNumber);
+    registerDeviceEffectMap();
     populateLibrary();
   } else {
     renderFixedPanel(profileData);

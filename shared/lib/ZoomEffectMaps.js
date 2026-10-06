@@ -124,4 +124,30 @@ export function addThruEffectToMap(effectIDMap) {
     if (!effectIDMap.has(0x00000000))
         effectIDMap.set(0x00000000, { name: "THRU", screenName: "THRU", parameters: [] });
 }
+/**
+ * Converts the fetched mapping JSON ({ "01000010": { name, parameters } })
+ * into the Map<intId, entry> form ZoomDevice's write path expects
+ * (getRawParameterValueFromString, setDefaultsForEffect, ...). Keys are
+ * parsed as hex; malformed keys are skipped.
+ * @param jsonObject parsed mapping file, or null/undefined
+ * @returns Map<number, object>, possibly empty but never null
+ */
+export function effectIdMapFromJson(jsonObject) {
+    const map = new Map();
+    if (!jsonObject || typeof jsonObject !== "object") return map;
+    for (const [key, entry] of Object.entries(jsonObject)) {
+        const id = parseInt(key, 16);
+        if (!Number.isInteger(id) || entry === null || typeof entry !== "object") continue;
+        // Normalize to the shape ZoomDevice.addUCNSValuesToMap expects:
+        // parameters[] with values[] on each. The utility BPM block
+        // (07000ff0) legitimately has zero parameters; anything else
+        // malformed is repaired rather than crashing registration.
+        if (!Array.isArray(entry.parameters)) entry.parameters = [];
+        for (const param of entry.parameters) {
+            if (param && !Array.isArray(param.values)) param.values = [];
+        }
+        map.set(id, entry);
+    }
+    return map;
+}
 //# sourceMappingURL=ZoomEffectMaps.js.map

@@ -14,6 +14,8 @@ import fs from "node:fs";
 
 import { EFFECT_ICON_OVERRIDES, iconSvgFor } from "../shared/effect-icons.js";
 import { ZoomPatch } from "../shared/lib/ZoomPatch.js";
+import { ZoomDevice } from "../shared/lib/ZoomDevice.js";
+import { effectIdMapFromJson } from "../shared/lib/ZoomEffectMaps.js";
 import ms50gpIds from "../shared/lib/zoom-effect-ids-ms50gp.js";
 import ms60bpIds from "../shared/lib/zoom-effect-ids-ms60bp.js";
 import ms70cdrpIds from "../shared/lib/zoom-effect-ids-ms70cdrp.js";
@@ -124,4 +126,35 @@ test("the BPM knob routes through the tempo channel, not effect params", () => {
   assert.ok(device.includes("setTempoOnDevice(tempo)"), "the write path exists");
   assert.ok(device.includes("parameterBuffer[0] = 100"),
     "tempo is addressed to effectSlot 100 (0x64), matching tempoV2");
+});
+
+test("effectIdMapFromJson converts the fetched JSON to the write-path Map", () => {
+  const json = load("shared/data/zoom-effect-mappings-ms60bp.json");
+  const map = effectIdMapFromJson(json);
+  assert.equal(map.size, Object.keys(json).length, "no entries dropped");
+  const entry = map.get(0x01000010);
+  assert.ok(entry, "integer keys: 0x01000010 resolves");
+  assert.equal(entry.name, "DYN Comp");
+  assert.ok(!map.has("01000010"), "string keys are not used");
+  assert.equal(effectIdMapFromJson(null).size, 0, "null is an empty map, not a crash");
+  assert.equal(effectIdMapFromJson({ "not-hex!!": { name: "x" } }).size, 0, "malformed keys skipped");
+});
+
+test("the fetched map registers under the device name the getter uses", () => {
+  // Regression: setEffectIDMap had zero call sites, so every save logged
+  // "No effect ID map found for device MS-60B+" and wrote zeros.
+  const json = load("shared/data/zoom-effect-mappings-ms60bp.json");
+  const map = effectIdMapFromJson(json);
+  ZoomDevice.setEffectIDMap(["MS-60B+", "MS-60B+ #2"], map);
+  try {
+    const got = ZoomDevice.getEffectIDMapForDevice("MS-60B+");
+    assert.ok(got, "base name resolves");
+    assert.equal(got.get(0x01000010).name, "DYN Comp");
+    assert.ok(ZoomDevice.getEffectIDMapForDevice("MS-60B+ #2"), "dedup-suffixed name resolves too");
+    const app = fs.readFileSync("shared/app.js", "utf8");
+    assert.ok(app.includes("registerDeviceEffectMap"), "app.js bridges fetch -> ZoomDevice");
+  } finally {
+    ZoomDevice._effectIDMaps.delete("MS-60B+");
+    ZoomDevice._effectIDMaps.delete("MS-60B+ #2");
+  }
 });

@@ -451,7 +451,12 @@ export class ZoomPatch {
         let preampBits = 0;
         for (let i = 0; i < effectSettings.length; i++) {
             let group = (effectSettings[i].id & PTCF_EFFECT_GROUP_MASK) >> PTCF_EFFECT_GROUP_SHIFT;
-            if (group === PTCF_EFFECT_GROUP_PREAMP) {
+            // Group 0x04 is preamp on every model; group 0x05 is the amp/
+            // preamp block on the MS-60B+ ("Bass amp": FlipTop, AMPG SVT,
+            // Bass DRV, ...) and B2 FOUR, where 0x04 stays a separate
+            // "Preamp" row. No model table uses 0x05 for anything else, so
+            // counting both is safe across pedals.
+            if (group === PTCF_EFFECT_GROUP_PREAMP || group === 0x05) {
                 preampBits |= 1 << i;
             }
         }

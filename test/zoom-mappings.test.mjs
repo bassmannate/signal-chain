@@ -140,6 +140,19 @@ test("effectIdMapFromJson converts the fetched JSON to the write-path Map", () =
   assert.equal(effectIdMapFromJson({ "not-hex!!": { name: "x" } }).size, 0, "malformed keys skipped");
 });
 
+test("createPreampSlotBits counts MS-60B+ amp blocks (group 0x05)", () => {
+  // Regression: USER-003 / Dual Overd patches warned
+  // "verifyPrm2PreampSlotBits() failed" on every patch-list click, because
+  // only group 0x04 counted while the MS-60B+ puts amps in 0x05.
+  const slots = (ids) => ids.map((id) => ({ id }));
+  assert.equal(ZoomPatch.createPreampSlotBits(slots([0x04000080])), 0b1, "0x04 still counts");
+  assert.equal(ZoomPatch.createPreampSlotBits(slots([0x05000010])), 0b1, "0x05 FlipTop counts");
+  assert.equal(
+    ZoomPatch.createPreampSlotBits(slots([0x01000010, 0x05000020, 0x06000110])),
+    0b010, "only the amp slot sets its bit");
+  assert.equal(ZoomPatch.createPreampSlotBits(slots([0x01000010])), 0, "non-amp stays clear");
+});
+
 test("the fetched map registers under the device name the getter uses", () => {
   // Regression: setEffectIDMap had zero call sites, so every save logged
   // "No effect ID map found for device MS-60B+" and wrote zeros.

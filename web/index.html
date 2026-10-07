@@ -49,6 +49,27 @@
 
     <div id="body">
 
+      <aside id="patch-library" class="hidden">
+        <div id="patch-library-header">
+          <span id="patch-library-title">Patch Library</span>
+          <span id="patch-library-name">No library open</span>
+        </div>
+        <div id="patch-library-buttons">
+          <button id="btn-lib-new" class="btn btn-small" title="Start an empty patch library for the connected device">New</button>
+          <button id="btn-lib-open" class="btn btn-small" title="Open a patch library file (.patchlib.json)">Open</button>
+          <button id="btn-lib-save" class="btn btn-small" title="Save the patch library">Save</button>
+          <button id="btn-lib-save-as" class="btn btn-small" title="Save the patch library under a new name">Save As</button>
+          <button id="btn-lib-close" class="btn btn-small" title="Close the patch library (wipes the stash)">Close</button>
+        </div>
+        <div id="patch-stash" class="hidden">
+          <div id="patch-stash-header">Displaced from device (unsaved)</div>
+          <ol id="patch-stash-list"></ol>
+        </div>
+        <ol id="patch-library-list"></ol>
+        <label id="lib-auto-reopen-wrap" title="When on, connecting this pedal reopens the library file that was last open for it. One memory per pedal (MS-50G+ and MS-60B+ are remembered separately)."><input type="checkbox" id="lib-auto-reopen" /> Reopen last library on connect</label>
+        <label id="knob-reverse-wheel-wrap" title="Reverse scroll-wheel direction on parameter knobs only (for natural-scroll touchpads). Scrolling lists and panels elsewhere is unaffected."><input type="checkbox" id="knob-reverse-wheel" /> Reverse knob scroll</label>
+      </aside>
+
       <aside id="sidebar">
         <div id="sidebar-header">Patches</div>
         <ol id="patch-list"></ol>
@@ -92,27 +113,6 @@
         </div>
 
       </main>
-
-      <aside id="patch-library" class="hidden">
-        <div id="patch-library-header">
-          <span id="patch-library-title">Patch Library</span>
-          <span id="patch-library-name">No library open</span>
-        </div>
-        <div id="patch-library-buttons">
-          <button id="btn-lib-new" class="btn btn-small" title="Start an empty patch library for the connected device">New</button>
-          <button id="btn-lib-open" class="btn btn-small" title="Open a patch library file (.patchlib.json)">Open</button>
-          <button id="btn-lib-save" class="btn btn-small" title="Save the patch library">Save</button>
-          <button id="btn-lib-save-as" class="btn btn-small" title="Save the patch library under a new name">Save As</button>
-          <button id="btn-lib-close" class="btn btn-small" title="Close the patch library (wipes the stash)">Close</button>
-        </div>
-        <div id="patch-stash" class="hidden">
-          <div id="patch-stash-header">Displaced from device (unsaved)</div>
-          <ol id="patch-stash-list"></ol>
-        </div>
-        <ol id="patch-library-list"></ol>
-        <label id="lib-auto-reopen-wrap" title="When on, connecting this pedal reopens the library file that was last open for it. One memory per pedal (MS-50G+ and MS-60B+ are remembered separately)."><input type="checkbox" id="lib-auto-reopen" /> Reopen last library on connect</label>
-        <label id="knob-reverse-wheel-wrap" title="Reverse scroll-wheel direction on parameter knobs only (for natural-scroll touchpads). Scrolling lists and panels elsewhere is unaffected."><input type="checkbox" id="knob-reverse-wheel" /> Reverse knob scroll</label>
-      </aside>
 
     </div>
 

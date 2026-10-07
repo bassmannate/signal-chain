@@ -178,8 +178,8 @@ Beyond the per-device Save/Load/Backup/Restore above, there's a patch library
 for holding *more* patches than the pedal has slots - the place to keep
 everything, and pull down only what you want to play.
 
-It lives in the third column of the window (right of the signal chain / POD
-panel), visible whenever a device is connected. It works the same way on both
+It lives in the first column of the window (left of the device patch list),
+visible whenever a device is connected. It works the same way on both
 device families, with **one library per family**: Zoom and POD patch bytes are
 mutually unintelligible, so a library declares which family it holds and will
 refuse to open for the other one. That check happens at file-open time rather

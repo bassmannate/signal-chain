@@ -13,7 +13,7 @@ if (typeof window !== "undefined") {
 }
 import { MIDIProxyForWebMIDIAPI } from "./lib/MIDIProxyForWebMIDIAPI.js";
 import { getMIDIDeviceList } from "./lib/miditools.js";
-import { findProfileFor, loadProfileData } from "./devices/profiles.js";
+import { chainDirectionFor, findProfileFor, loadProfileData } from "./devices/profiles.js";
 import {
   PROGRAM_BYTE_COUNT,
   buildEditBufferDump,
@@ -71,6 +71,13 @@ let midi = null;
 let device = null;
 let effectMap = {};
 let currentModelByte = null;
+// Display direction of the effect chain ("ltr" | "rtl"). Set only via
+// updateChainDirection() so there is exactly one model-name check site.
+let currentChainDirection = "ltr";
+// One-shot: anchor the scrollbar at the input end on patch switch or
+// direction change only - never on plain re-renders (delete/reorder/drop)
+// so the strip does not jump while editing.
+let anchorChainScrollNextRender = false;
 let selectedSlot = null;
 let selectedMemorySlot = null;
 const panelControls = new Map(); // ccNumber -> control handle from ui/controls.js
@@ -302,9 +309,62 @@ function updateRestoreButtonState() {
   els.btnRestore.disabled = !device || !device.isOpen || selectedMemorySlot === null;
 }
 
+// --- Effect-chain display direction ------------------------------------------
+//
+// Single source of truth for which way the signal flows on screen. Slot
+// indices, patch bytes and SysEx never change: slot 0 is always the first
+// effect in the signal path; in "rtl" mode it is simply painted at the
+// right end (input on the right, like the MS Plus hardware).
+function updateChainDirection(deviceName, { anchorScroll = false } = {}) {
+  const next = chainDirectionFor(deviceName);
+  const changed = next !== currentChainDirection;
+  currentChainDirection = next;
+  if (els.chain) {
+    els.chain.setAttribute("data-direction", next);
+    els.chain.setAttribute("aria-label", next === "rtl"
+      ? "Signal chain, input on the right"
+      : "Signal chain, input on the left");
+  }
+  // Anchor only on patch switch or direction change - never on plain
+  // re-renders - so delete/reorder/drop never yank the scrollbar.
+  if (anchorScroll || changed) anchorChainScrollNextRender = true;
+}
+
+// Snap the chain scrollbar to the input end (slot 0) after layout, without
+// assuming a scrollLeft sign convention: Chromium/Electron row-reverse
+// scrollers can report 0-at-right with negative scrollLeft, so probe the
+// current value instead of assigning scrollWidth blindly.
+function anchorChainScroll() {
+  const chain = els.chain;
+  if (!chain || !anchorChainScrollNextRender) return;
+  anchorChainScrollNextRender = false;
+  if (chain.scrollWidth <= chain.clientWidth + 1) return;
+  // Defer past layout, then probe which sign convention this scroller uses:
+  // negative-leaning (0 at right, decreasing leftward) vs positive-leaning.
+  requestAnimationFrame(() => {
+    const max = chain.scrollWidth - chain.clientWidth;
+    if (!(max > 0)) return;
+    if (currentChainDirection !== "rtl") {
+      chain.scrollLeft = 0;
+      return;
+    }
+    chain.scrollLeft = -1;
+    if (chain.scrollLeft < 0) {
+      // Negative convention: 0 already shows slot 0 at the right end.
+      chain.scrollLeft = 0;
+    } else {
+      // Positive convention: the far end is at +max.
+      chain.scrollLeft = max;
+    }
+  });
+}
+
 function setConnected(open, name) {
   const isChain = profile?.layout === "chain";
   const isPanel = profile?.layout === "fixed-panel";
+  // Direction follows the connected model; disconnect and fixed-panel
+  // devices (whose labels never match the Plus pattern) fall back to ltr.
+  updateChainDirection(open ? name : null);
 
   els.connLed.className = "led " + (open ? "led-on" : "led-off");
   els.connLabel.textContent = open ? name : "Not connected";
@@ -498,6 +558,7 @@ async function connect() {
 
   if (profile.layout === "chain") {
     device.parameterEditEnable();
+    updateChainDirection(profile.deviceLabel(desc));
     await loadEffectMapFor(profile.pickDataFile(desc), desc.modelNumber);
     registerDeviceEffectMap();
     populateLibrary();
@@ -512,6 +573,7 @@ async function connect() {
 
   if (profile.layout === "chain") {
     try {
+      anchorChainScrollNextRender = true; // first read after connect = patch switch
       await device.downloadCurrentPatch();
     } catch (e) {
       status("Connected, but couldn't read the current patch: " + e.message, true);
@@ -612,6 +674,7 @@ async function selectPatchFromList(index, li) {
   try {
     const loaded = await device.downloadPatchFromMemorySlot(index);
     if (!loaded) { status(`Patch ${index} came back empty.`, true); return; }
+    anchorChainScrollNextRender = true; // patch switch: show slot 0 (input end)
     device.uploadPatchToCurrentPatch(loaded); // pushes to the pedal's edit buffer, fires currentPatchChanged
     [...els.patchList.children].forEach((c) => c.classList.remove("active"));
     li.classList.add("active");
@@ -848,6 +911,7 @@ function renderChain(patch) {
   });
 
   updateLibraryState();
+  anchorChainScroll();
 }
 
 function deleteEffect(patch, slot) {
@@ -1069,12 +1133,14 @@ function getDropIndex(e) {
   // Get the mouse position relative to the chain
   const mouseX = e.clientX;
 
-  // Find the module that the mouse is over
+  // Find the module that the mouse is over. DOM order is always slot order;
+  // in rtl the visual order is mirrored so the comparison flips.
+  const rtl = currentChainDirection === "rtl";
   for (let i = 0; i < modules.length; i++) {
     const rect = modules[i].getBoundingClientRect();
     const midX = rect.left + rect.width / 2;
-    if (mouseX < midX) {
-      return i;
+    if (rtl ? mouseX > midX : mouseX < midX) {
+      return Number(modules[i].dataset.slot ?? i);
     }
   }
 
@@ -1498,6 +1564,7 @@ async function writeBytesToSlot(slot, bytes) {
   if (!patch) return false;
   const success = await device.uploadPatchToMemorySlot(patch, slot);
   if (!success) return false;
+  anchorChainScrollNextRender = true; // library drop loads a whole patch
   device.uploadPatchToCurrentPatch(patch);
   selectedMemorySlot = slot;
   updateRestoreButtonState();
@@ -1675,6 +1742,9 @@ async function auditionLibraryEntry(entryId) {
     status(`"${entry.name}" is corrupt and cannot be auditioned.`, true);
     return;
   }
+  anchorChainScrollNextRender = true; // audition loads a whole patch
+  // Offline, the entry's model string is the only model signal there is.
+  if (!device?.isOpen && entry?.model) updateChainDirection(entry.model);
   const ok = await auditionBytes(bytes);
   status(ok ? `Auditioning "${entry.name}" in the edit buffer.` : `Could not audition "${entry.name}".`, !ok);
 }
@@ -2351,6 +2421,8 @@ if (els.logLevel) {
 
 // Set up the chain as a drop zone for the effect library
 setupChainDropZone();
+// Seed data-direction="ltr" so the attribute exists from first paint.
+updateChainDirection(null);
 
 els.patchName.addEventListener("change", async () => {
   if (profile?.layout === "fixed-panel") {

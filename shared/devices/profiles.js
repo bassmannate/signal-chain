@@ -25,6 +25,38 @@ export const MODEL_TO_MAPPING_FILE = {
     // 0x??: new URL("../data/zoom-effect-mappings-ms70cdrp.json", import.meta.url).href, // MS-70CDR+ - see above
 };
 
+// Effect-chain display direction per device.
+//
+// MS Plus pedals (MS-50G+, MS-60B+, MS-70CDR+, ...) sit on a pedalboard with
+// the input jack on the right, so the signal flows right to left. Every other
+// device - including older Zoom pedals such as the B1X Four - stays left to
+// right, which is also the default for anything unrecognised.
+//
+// Single source of truth: app.js calls chainDirectionFor() in exactly the
+// places the direction can change (connect, disconnect, offline/library
+// audition). Nothing else in the UI matches on model names.
+export const CHAIN_DIRECTION_OVERRIDES = {
+    // Example: "B1X Four": "ltr",
+};
+
+const MS_PLUS_DIRECTION_PATTERN = /^MS-\d+[A-Z]+\+$/;
+
+/**
+ * Display direction of the effect chain for a device model name.
+ * @param {string|null|undefined} deviceName e.g. "MS-60B+", "B1X Four"
+ * @returns {"ltr"|"rtl"} "rtl" for MS Plus models, "ltr" otherwise
+ */
+export function chainDirectionFor(deviceName) {
+    if (typeof deviceName === "string") {
+        const name = deviceName.trim();
+        if (name && Object.hasOwn(CHAIN_DIRECTION_OVERRIDES, name)) {
+            return CHAIN_DIRECTION_OVERRIDES[name];
+        }
+        if (MS_PLUS_DIRECTION_PATTERN.test(name)) return "rtl";
+    }
+    return "ltr";
+}
+
 export const ZOOM_MANUFACTURER_ID = 0x52;
 
 // Line 6's three-byte SysEx manufacturer ID (0x00 0x01 0x0C - "Fast Forward",

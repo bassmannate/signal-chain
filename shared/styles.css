@@ -207,9 +207,9 @@ input { font-family: inherit; color: inherit; }
 
 /* --- Patch librarian -------------------------------------------------- */
 
-/* A third column in #body, after the device patch list and the stage
-   (see #body's flex rule). Deliberately NOT inside #stage: that is a
-   flex column, so the panel would stack under the chain instead. */
+/* The first column in #body, left of the device patch list (see #body's
+   flex rule). Deliberately NOT inside #stage: that is a flex column, so
+   the panel would stack under the chain instead. */
 
 #patch-library {
   width: 300px;
@@ -217,7 +217,7 @@ input { font-family: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
   padding: 12px 14px;
   overflow-y: auto;
 }
@@ -357,6 +357,15 @@ input { font-family: inherit; color: inherit; }
   /* Allow delete buttons (which extend above modules) to be visible */
   overflow-y: visible;
   padding-top: 16px;
+}
+
+/* MS Plus pedals paint the chain right to left - input jack on the right,
+   slot 0 at the right end - the way the hardware sits on a board. Flex
+   mirroring only: DOM order stays slot order and card text keeps LTR, so
+   tab order follows the signal path. Set from devices/profiles.js's
+   chainDirectionFor() via app.js's data-direction attribute. */
+#chain[data-direction="rtl"] {
+  flex-direction: row-reverse;
 }
 
 .module {

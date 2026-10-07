@@ -1,6 +1,6 @@
 {
   "name": "signal-chain",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A native desktop patch editor for the Zoom MS Plus pedal series and Bass Pod/Pro",
   "main": "electron/main.js",
   "scripts": {

@@ -22,6 +22,10 @@ import { BassPodProDevice } from "./BassPodProDevice.js";
 export const MODEL_TO_MAPPING_FILE = {
     0x23: new URL("../data/zoom-effect-mappings-ms50gp.json", import.meta.url).href,
     0x27: new URL("../data/zoom-effect-mappings-ms60bp.json", import.meta.url).href,
+    // MS-200D+ (identity model 0x25, firmware 1.30). Names and ids come from a catalogue
+    // built against the pedal; the parameter tables are inherited from the 50G+/60B+ files
+    // where the effect name matches, and are absent for the rest.
+    0x25: new URL("../data/zoom-effect-mappings-ms200dp.json", import.meta.url).href,
     // 0x??: new URL("../data/zoom-effect-mappings-ms70cdrp.json", import.meta.url).href, // MS-70CDR+ - see above
 };
 
